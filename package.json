@@ -1,0 +1,18 @@
+{
+  "name": "ghost-bot",
+  "version": "1.0.0",
+  "description": "Bot de WhatsApp modular creado por Picolas",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "author": "Picolas",
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^16.6.1",
+    "qrcode-terminal": "^0.12.0",
+    "whatsapp-web.js": "^1.34.1",
+    "yt-search": "^2.13.1"
+  }
+}
