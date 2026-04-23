@@ -20,13 +20,21 @@ export async function loadPlugins() {
       const module = await import(pathToFileURL(fullPath).href);
       const command = module.default;
 
+      // 🔍 Validación
       if (!command?.name || !command?.execute) {
         console.log(`⚠️ Plugin inválido: ${file}`);
         continue;
       }
 
-      commands.set(command.name.toLowerCase(), command);
-      console.log(`✅ Plugin cargado: ${command.name}`);
+      // 🔥 SOPORTE DE ALIASES
+      const names = command.aliases || [command.name];
+
+      for (const name of names) {
+        commands.set(name.toLowerCase(), command);
+      }
+
+      console.log(`✅ Plugin cargado: ${command.name} (${names.join(", ")})`);
+
     } catch (error) {
       console.log(`❌ Error cargando plugin ${file}: ${error.message}`);
     }

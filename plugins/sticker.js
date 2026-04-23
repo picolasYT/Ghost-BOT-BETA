@@ -17,7 +17,7 @@ export default {
     await message.reply(media, undefined, {
       sendMediaAsSticker: true,
       stickerAuthor: "Picolas",
-      stickerName: "Ghost-Bot"
+      stickerName: "Ghost-Bot Picolas_YT en tiktok"
     });
   }
 };

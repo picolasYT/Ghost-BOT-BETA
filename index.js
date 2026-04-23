@@ -91,15 +91,16 @@ async function handleCommand(message) {
     console.log(`⚡ Ejecutando comando: ${commandName}`);
 
     await command.execute({
-      client,
-      message,
-      args,
-      config,
-      MessageMedia,
-      fs,
-      path,
-      cacheDir: CACHE_DIR
-    });
+  client,
+  message,
+  args,
+  config,
+  MessageMedia,
+  fs,
+  path,
+  cacheDir: CACHE_DIR,
+  reply: (content, options) => message.reply(content, undefined, options)
+});
   } catch (error) {
     console.error("❌ Error ejecutando comando:", error);
     try {

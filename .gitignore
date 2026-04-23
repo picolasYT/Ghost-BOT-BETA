@@ -1,9 +1,13 @@
-node_modules/
-.env
-session/
+# Carpetas de autenticación y caché de WhatsApp Web
+.wwebjs_auth/
+.wwebjs_cache/
 cache/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.DS_Store
-Thumbs.db
+
+# Dependencias de Node (muy pesadas)
+node_modules/
+
+# Archivos de configuración de dependencias
+package-lock.json
+
+# Archivos de entorno (contienen credenciales sensibles)
+.env
