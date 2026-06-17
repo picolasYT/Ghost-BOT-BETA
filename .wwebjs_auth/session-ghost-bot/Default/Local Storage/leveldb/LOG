@@ -1,5 +1,3 @@
-2026/04/22-19:39:49.388 62d8 Creating DB C:\Users\nicol\Desktop\Ghost-BOT-Beta\.wwebjs_auth\session-ghost-bot\Default\Local Storage\leveldb since it was missing.
-2026/04/22-19:39:49.407 62d8 Reusing MANIFEST C:\Users\nicol\Desktop\Ghost-BOT-Beta\.wwebjs_auth\session-ghost-bot\Default\Local Storage\leveldb/MANIFEST-000001
-2026/04/22-20:12:16.598 2608 Level-0 table #5: started
-2026/04/22-20:12:16.603 2608 Level-0 table #5: 17704 bytes OK
-2026/04/22-20:12:16.606 2608 Delete type=0 #3
+2026/06/17-19:37:09.722 42ec Reusing MANIFEST C:\Users\nicol\Downloads\Ghost-BOT-Beta-Improved\Ghost-BOT-Beta\.wwebjs_auth\session-ghost-bot\Default\Local Storage\leveldb/MANIFEST-000001
+2026/06/17-19:37:09.733 42ec Recovering log #4
+2026/06/17-19:37:09.738 42ec Reusing old log C:\Users\nicol\Downloads\Ghost-BOT-Beta-Improved\Ghost-BOT-Beta\.wwebjs_auth\session-ghost-bot\Default\Local Storage\leveldb/000004.log 

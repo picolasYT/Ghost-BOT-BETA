@@ -1,10 +1,13 @@
 import fs from "fs";
 import path from "path";
-import { pathToFileURL } from "url";
+import { pathToFileURL, fileURLToPath } from "url";
 
 export async function loadPlugins() {
   const commands = new Map();
-  const pluginsDir = path.resolve("./plugins");
+  // Calculamos la ruta de la carpeta plugins de forma relativa a este archivo
+  // para evitar problemas cuando el proceso se ejecuta desde otro directorio.
+  const __dirname = path.dirname(fileURLToPath(import.meta.url));
+  const pluginsDir = path.join(__dirname, "..", "plugins");
 
   if (!fs.existsSync(pluginsDir)) {
     console.log("⚠️ La carpeta plugins no existe.");
@@ -27,10 +30,14 @@ export async function loadPlugins() {
       }
 
       // 🔥 SOPORTE DE ALIASES
-      const names = command.aliases || [command.name];
+      // Siempre incluimos el nombre del comando original junto con sus alias.
+      const aliases = Array.isArray(command.aliases) ? command.aliases : [];
+      const names = [command.name, ...aliases];
 
       for (const name of names) {
-        commands.set(name.toLowerCase(), command);
+        if (typeof name === "string") {
+          commands.set(name.toLowerCase(), command);
+        }
       }
 
       console.log(`✅ Plugin cargado: ${command.name} (${names.join(", ")})`);

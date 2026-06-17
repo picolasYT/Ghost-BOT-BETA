@@ -1,59 +1,54 @@
-import yts from "yt-search";
-
-function cleanYoutubeUrl(url) {
-  try {
-    const u = new URL(url);
-    const id = u.searchParams.get("v");
-    return id ? `https://www.youtube.com/watch?v=${id}` : url;
-  } catch {
-    return url;
-  }
+async function getYts() {
+  const mod = await import("yt-search")
+  return mod.default || mod
 }
 
-function formatViews(views) {
-  if (typeof views !== "number" || views < 0) return "0";
-  if (views >= 1e9) return (views / 1e9).toFixed(1) + "B";
-  if (views >= 1e6) return (views / 1e6).toFixed(1) + "M";
-  if (views >= 1e3) return (views / 1e3).toFixed(1) + "K";
-  return views.toString();
+function formatViews(views = 0) {
+  if (views >= 1e9) return `${(views / 1e9).toFixed(1)}B`
+  if (views >= 1e6) return `${(views / 1e6).toFixed(1)}M`
+  if (views >= 1e3) return `${(views / 1e3).toFixed(1)}K`
+  return String(views)
 }
 
 export default {
   name: "play2",
-  description: "Muestra varios resultados de YouTube",
-  async execute({ message }) {
-    const body = message.body || "";
-    const args = body.trim().split(/\s+/).slice(1);
-    const text = args.join(" ").trim();
+  aliases: ["ytsearch"],
+  category: "search",
+  description: "Muestra varios resultados de YouTube.",
 
-    if (!text) {
-      return message.reply("🎧 Usá: !play2 nombre de canción o video");
-    }
-
+  async execute({ message, args, config }) {
     try {
-      const res = await yts(text);
+      const prefix = config.prefix || "!"
+      const text = args.join(" ").trim()
 
-      if (!res?.videos?.length) {
-        return message.reply("❌ No encontré resultados.");
+      if (!text) {
+        return await message.reply(`🎧 Usá:\n${prefix}play2 nombre de canción o video`)
       }
 
-      const top = res.videos.slice(0, 5);
+      const yts = await getYts()
+      const res = await yts(text)
+
+      if (!res?.videos?.length) {
+        return await message.reply("❌ No encontré resultados.")
+      }
+
+      const results = res.videos.slice(0, 5)
 
       const msg =
-        `🎶 *Resultados para:* ${text}\n\n` +
-        top.map((v, i) => {
+        `🔎 *Resultados para:* ${text}\n\n` +
+        results.map((v, i) => {
           return (
             `*${i + 1}.* ${v.title}\n` +
             `👤 ${v.author?.name || "Desconocido"}\n` +
-            `⏱ ${v.timestamp || "N/D"} | 👁 ${formatViews(v.views || 0)}\n` +
-            `🔗 ${cleanYoutubeUrl(v.url)}`
-          );
-        }).join("\n\n");
+            `⏱️ ${v.timestamp || "N/D"} | 👁️ ${formatViews(v.views || 0)}\n` +
+            `🔗 ${v.url}`
+          )
+        }).join("\n\n")
 
-      await message.reply(msg);
-    } catch (error) {
-      console.error("❌ Error en play2.js:", error);
-      await message.reply("❌ Error buscando resultados.");
+      await message.reply(msg)
+    } catch (e) {
+      console.error("❌ Error en play2.js:", e)
+      await message.reply(`❌ Error buscando resultados.\n\n${e.message}`)
     }
   }
-};
+}

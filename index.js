@@ -115,9 +115,21 @@ async function startBot() {
 
     console.log(`📦 Plugins cargados: ${client.commands.size}`);
 
+    // Evento QR: se dispara cuando es necesaria la autenticación por código QR.
+    // Este evento seguirá disponible aunque se utilice el método de emparejamiento
+    // por código. Mostramos el código solo si el modo de autenticación es QR.
     client.on("qr", (qr) => {
+      if (config.loginMethod?.toLowerCase() !== "qr") return;
       console.log("\n📱 ESCANEÁ ESTE QR CON WHATSAPP:\n");
       qrcode.generate(qr, { small: true });
+    });
+
+    // Evento code: se dispara cuando se recibe un código de emparejamiento.
+    // Mostramos el código por consola para que el usuario pueda introducirlo
+    // en su aplicación móvil.
+    client.on("code", (code) => {
+      console.log("\n📟 Código de emparejamiento recibido:\n");
+      console.log(`🔢 ${code}\n`);
     });
 
     client.on("loading_screen", (percent, message) => {
@@ -157,6 +169,27 @@ async function startBot() {
     });
 
     client.initialize();
+
+    // Si se configuró el método de autenticación por código y se proporcionó
+    // un número de teléfono válido, solicitamos el código de emparejamiento.
+    if (config.loginMethod?.toLowerCase() === "code") {
+      // Normalizamos el número eliminando caracteres no numéricos
+      const rawPhone = config.phoneNumber || process.env.PHONE_NUMBER || "";
+      const phone = (rawPhone.match(/\d+/g) || []).join("");
+      if (!phone) {
+        console.log("⚠️ Se seleccionó el modo de emparejamiento por código pero no se proporcionó PHONE_NUMBER. Usando QR por defecto.");
+      } else {
+        try {
+          console.log(`\n📲 Solicitando código de emparejamiento para el número ${phone}...`);
+          const pairingCode = await client.requestPairingCode(phone);
+          // requestPairingCode devuelve el código una vez, pero también será
+          // emitido por el evento "code". Mostramos por si acaso.
+          console.log(`\n📟 Código de emparejamiento: ${pairingCode}\n`);
+        } catch (err) {
+          console.error("❌ Error generando código de emparejamiento:", err);
+        }
+      }
+    }
   } catch (error) {
     console.error("❌ Error iniciando el bot:", error);
   }
