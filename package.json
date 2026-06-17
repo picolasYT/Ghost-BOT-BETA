@@ -5,7 +5,11 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "setup": "npm install",
+    "setup:linux": "bash scripts/install-linux.sh",
+    "setup:codespace": "bash scripts/install-linux.sh",
+    "dev": "node index.js"
   },
   "author": "Picolas",
   "license": "ISC",
