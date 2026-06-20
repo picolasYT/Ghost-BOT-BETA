@@ -1,105 +1,78 @@
-async function getYtdl() {
-  try {
-    const mod = await import("@distube/ytdl-core")
-    return mod.default || mod
-  } catch {
-    const mod = await import("ytdl-core")
-    return mod.default || mod
-  }
-}
-
-async function getYts() {
-  const mod = await import("yt-search")
-  return mod.default || mod
-}
-
-function safeName(text = "audio") {
-  return text.replace(/[\\/:*?"<>|]/g, "").slice(0, 60) || "audio"
-}
-
-function streamToBuffer(stream, limit = 45 * 1024 * 1024) {
-  return new Promise((resolve, reject) => {
-    const chunks = []
-    let size = 0
-
-    stream.on("data", chunk => {
-      size += chunk.length
-
-      if (size > limit) {
-        stream.destroy()
-        reject(new Error("El archivo es demasiado pesado para enviarlo por WhatsApp."))
-        return
-      }
-
-      chunks.push(chunk)
-    })
-
-    stream.on("end", () => resolve(Buffer.concat(chunks)))
-    stream.on("error", reject)
-  })
-}
-
-async function resolveYoutube(text, ytdl) {
-  if (ytdl.validateURL(text)) return text
-
-  const yts = await getYts()
-  const res = await yts(text)
-
-  if (!res?.videos?.length) return null
-
-  return res.videos[0].url
-}
+import {
+  MAX_AUDIO_SIZE,
+  fetchBuffer,
+  fetchThumbnailBuffer,
+  formatBytes,
+  getFareAudio,
+  getRemoteFileSize,
+  getYoutubeUrl,
+  sanitizeFileName
+} from "../utils/fare.js";
 
 export default {
   name: "ytmp3",
   aliases: ["ytaudio", "yta"],
   category: "download",
-  description: "Descarga audio de YouTube.",
+  description: "Descarga audio de YouTube usando una API externa.",
 
   async execute({ message, args, config, MessageMedia }) {
     try {
-      const prefix = config.prefix || "!"
-      const text = args.join(" ").trim()
+      const prefix = config.prefix || "!";
+      const text = args.join(" ").trim();
 
       if (!text) {
-        return await message.reply(`🎧 Usá:\n${prefix}ytmp3 link o nombre de canción`)
+        return await message.reply(`Usa:\n${prefix}ytmp3 link o nombre de cancion`);
       }
 
-      const ytdl = await getYtdl()
-      const url = await resolveYoutube(text, ytdl)
+      const url = await getYoutubeUrl(text);
+      const data = await getFareAudio(url);
 
-      if (!url) {
-        return await message.reply("❌ No encontré ese video.")
+      if (!data?.downloadUrl) {
+        return await message.reply("No se pudo descargar el audio. Intenta mas tarde.");
       }
 
-      const info = await ytdl.getInfo(url)
-      const title = info.videoDetails?.title || "audio"
+      const sizeBytes = data.sizeBytes || (await getRemoteFileSize(data.downloadUrl).catch(() => null));
+      const sizeText = sizeBytes ? formatBytes(sizeBytes) : data.sizeText || "Desconocido";
 
-      if (Number(info.videoDetails?.lengthSeconds || 0) > 900) {
-        return await message.reply("❌ El audio es muy largo. Máximo recomendado: 15 minutos.")
+      const infoMessage = [
+        `Descargando: *${data.title}*`,
+        "",
+        `Canal: *${data.channel}*`,
+        `Duracion: *${data.duration}*`,
+        `Calidad: *${data.quality}*`,
+        `Tamano: *${sizeText}*`,
+        `Enlace: *${url}*`
+      ].join("\n");
+
+      const thumbBuffer = await fetchThumbnailBuffer(data.thumbnail);
+
+      if (thumbBuffer) {
+        const thumbMedia = new MessageMedia(
+          "image/jpeg",
+          thumbBuffer.toString("base64"),
+          "thumb.jpg"
+        );
+
+        await message.reply(thumbMedia, undefined, {
+          caption: infoMessage
+        });
+      } else {
+        await message.reply(infoMessage);
       }
 
-      await message.reply("⏳ Descargando audio...")
-
-      const stream = ytdl.downloadFromInfo(info, {
-        filter: "audioonly",
-        quality: "highestaudio"
-      })
-
-      const buffer = await streamToBuffer(stream)
-
+      const audioBuffer = await fetchBuffer(data.downloadUrl, MAX_AUDIO_SIZE);
       const media = new MessageMedia(
-        "audio/mp4",
-        buffer.toString("base64"),
-        `${safeName(title)}.mp3`
-      )
+        "audio/mpeg",
+        audioBuffer.toString("base64"),
+        `${sanitizeFileName(data.title)}.mp3`
+      );
 
       await message.reply(media, undefined, {
         sendAudioAsVoice: false
-      })
+      });
     } catch (e) {
-      console.error("❌ Error en ytmp3.js:", e)
-      await message.reply(`❌ Error descargando audio.\n\n${e.message}`)
+      console.error("Error en ytmp3.js:", e);
+      await message.reply(`Error descargando audio.\n\n${e.message}`);
     }
   }
 }

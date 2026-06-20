@@ -1,18 +1,29 @@
 import "dotenv/config";
 import fs from "fs";
 import path from "path";
-import pkg from "whatsapp-web.js";
 import qrcode from "qrcode-terminal";
 import config from "./config.js";
 import { loadPlugins } from "./utils/loadPlugins.js";
-
-const { Client, LocalAuth, MessageMedia } = pkg;
+import { createClient } from "./utils/createClient.js";
+import { getStartupHints } from "./utils/runtime.js";
+import {
+  formatId,
+  installPrettyConsole,
+  logBanner,
+  logError,
+  logInfo,
+  logStep,
+  logSuccess,
+  logWarn
+} from "./utils/logger.js";
 
 const CACHE_DIR = path.resolve("./cache");
 
+installPrettyConsole();
+
 if (!fs.existsSync(CACHE_DIR)) {
   fs.mkdirSync(CACHE_DIR, { recursive: true });
-  console.log("📁 Carpeta cache creada.");
+  logSuccess("Carpeta cache creada.");
 }
 
 function clearCacheFolder() {
@@ -33,13 +44,13 @@ function clearCacheFolder() {
           deleted++;
         }
       } catch (err) {
-        console.log(`⚠️ No se pudo borrar ${file}: ${err.message}`);
+        logWarn(`No se pudo borrar ${file}: ${err.message}`);
       }
     }
 
-    console.log(`🧹 Cache limpiada. Archivos borrados: ${deleted}`);
+    logInfo(`Cache limpiada. Archivos borrados: ${deleted}`);
   } catch (error) {
-    console.log("❌ Error limpiando cache:", error.message);
+    logError("Error limpiando cache.", error);
   }
 }
 
@@ -47,28 +58,19 @@ setInterval(() => {
   clearCacheFolder();
 }, 60 * 1000);
 
-const client = new Client({
-  authStrategy: new LocalAuth({
-    clientId: "ghost-bot"
-  }),
-  puppeteer: {
-    headless: true,
-    args: [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage"
-    ]
-  }
-});
+const { client, runtime, authPath, disableSandbox, MessageMedia } = createClient();
 
-client.commands = new Map();
+async function reloadCommands() {
+  client.commands = await loadPlugins();
+  return client.commands.size;
+}
 
 async function handleCommand(message) {
   try {
     if (!message?.body) return;
 
-    console.log(
-      `📩 Mensaje detectado | from: ${message.from} | fromMe: ${message.fromMe} | body: ${message.body}`
+    logInfo(
+      `Mensaje | from=${formatId(message.from)} | fromMe=${message.fromMe} | body=${message.body}`
     );
 
     if (!message.body.startsWith(config.prefix)) return;
@@ -84,84 +86,87 @@ async function handleCommand(message) {
     const command = client.commands.get(commandName);
 
     if (!command) {
-      console.log(`⚠️ Comando no encontrado: ${commandName}`);
+      logWarn(`Comando no encontrado: ${commandName}`);
       return;
     }
 
-    console.log(`⚡ Ejecutando comando: ${commandName}`);
+    logStep(`Ejecutando comando: ${commandName}`);
 
     await command.execute({
-  client,
-  message,
-  args,
-  config,
-  MessageMedia,
-  fs,
-  path,
-  cacheDir: CACHE_DIR,
-  reply: (content, options) => message.reply(content, undefined, options)
-});
+      client,
+      message,
+      args,
+      config,
+      MessageMedia,
+      fs,
+      path,
+      cacheDir: CACHE_DIR,
+      runtime,
+      authPath,
+      disableSandbox,
+      reloadCommands,
+      reply: (content, options) => message.reply(content, undefined, options)
+    });
   } catch (error) {
-    console.error("❌ Error ejecutando comando:", error);
+    logError("Error ejecutando comando.", error);
     try {
-      await message.reply("❌ Ocurrió un error al ejecutar ese comando.");
+      await message.reply("Ocurrio un error al ejecutar ese comando.");
     } catch {}
   }
 }
 
 async function startBot() {
   try {
-    client.commands = await loadPlugins();
+    await reloadCommands();
 
-    console.log(`📦 Plugins cargados: ${client.commands.size}`);
+    logBanner([
+      `${config.botName} iniciado`,
+      `${runtime.platform}/${runtime.arch} | Node ${runtime.node}`,
+      `Comandos: ${client.commands.size} | Auth: ${authPath}`,
+      `Chromium sandbox: ${disableSandbox ? "off" : "on"}`
+    ]);
 
-    // Evento QR: se dispara cuando es necesaria la autenticación por código QR.
-    // Este evento seguirá disponible aunque se utilice el método de emparejamiento
-    // por código. Mostramos el código solo si el modo de autenticación es QR.
+    for (const hint of getStartupHints(runtime, config)) {
+      logWarn(hint);
+    }
+
     client.on("qr", (qr) => {
       if (config.loginMethod?.toLowerCase() !== "qr") return;
-      console.log("\n📱 ESCANEÁ ESTE QR CON WHATSAPP:\n");
+      logStep("Escanea este QR con WhatsApp.");
       qrcode.generate(qr, { small: true });
     });
 
-    // Evento code: se dispara cuando se recibe un código de emparejamiento.
-    // Mostramos el código por consola para que el usuario pueda introducirlo
-    // en su aplicación móvil.
     client.on("code", (code) => {
-      console.log("\n📟 Código de emparejamiento recibido:\n");
-      console.log(`🔢 ${code}\n`);
+      logInfo(`Codigo de emparejamiento recibido: ${code}`);
     });
 
     client.on("loading_screen", (percent, message) => {
-      console.log(`⏳ Cargando... ${percent}% - ${message}`);
+      logStep(`Cargando... ${percent}% - ${message}`);
     });
 
     client.on("authenticated", () => {
-      console.log("✅ Autenticado correctamente.");
+      logSuccess("Autenticado correctamente.");
     });
 
     client.on("ready", () => {
-      console.log(`🤖 ${config.botName} está listo.`);
-      console.log(`📌 Prefijo: ${config.prefix}`);
-      console.log(`👑 Owner: ${config.ownerName}`);
+      logSuccess(`${config.botName} esta listo.`);
+      logInfo(`Prefijo: ${config.prefix} | Owner: ${config.ownerName} | Provider: ${config.provider}`);
     });
 
     client.on("auth_failure", (msg) => {
-      console.log("❌ Falló la autenticación:", msg);
+      logError(`Fallo la autenticacion: ${msg}`);
     });
 
     client.on("disconnected", (reason) => {
-      console.log("⚠️ Bot desconectado:", reason);
+      logWarn(`Bot desconectado: ${reason}`);
     });
 
-    // Mensajes recibidos de otros
     client.on("message", async (message) => {
       if (!message.fromMe) {
         await handleCommand(message);
       }
     });
 
-    // Mensajes creados, incluyendo los tuyos
     client.on("message_create", async (message) => {
       if (message.fromMe) {
         await handleCommand(message);
@@ -170,28 +175,24 @@ async function startBot() {
 
     client.initialize();
 
-    // Si se configuró el método de autenticación por código y se proporcionó
-    // un número de teléfono válido, solicitamos el código de emparejamiento.
     if (config.loginMethod?.toLowerCase() === "code") {
-      // Normalizamos el número eliminando caracteres no numéricos
       const rawPhone = config.phoneNumber || process.env.PHONE_NUMBER || "";
       const phone = (rawPhone.match(/\d+/g) || []).join("");
+
       if (!phone) {
-        console.log("⚠️ Se seleccionó el modo de emparejamiento por código pero no se proporcionó PHONE_NUMBER. Usando QR por defecto.");
+        logWarn("Se selecciono el modo code pero no se proporciono PHONE_NUMBER. Se usara QR.");
       } else {
         try {
-          console.log(`\n📲 Solicitando código de emparejamiento para el número ${phone}...`);
+          logStep(`Solicitando codigo de emparejamiento para ${phone}...`);
           const pairingCode = await client.requestPairingCode(phone);
-          // requestPairingCode devuelve el código una vez, pero también será
-          // emitido por el evento "code". Mostramos por si acaso.
-          console.log(`\n📟 Código de emparejamiento: ${pairingCode}\n`);
+          logInfo(`Codigo de emparejamiento: ${pairingCode}`);
         } catch (err) {
-          console.error("❌ Error generando código de emparejamiento:", err);
+          logError("Error generando codigo de emparejamiento.", err);
         }
       }
     }
   } catch (error) {
-    console.error("❌ Error iniciando el bot:", error);
+    logError("Error iniciando el bot.", error);
   }
 }
 

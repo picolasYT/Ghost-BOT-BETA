@@ -6,10 +6,11 @@
   "type": "module",
   "scripts": {
     "start": "node index.js",
-    "setup": "npm install",
-    "setup:linux": "bash scripts/install-linux.sh",
-    "setup:codespace": "bash scripts/install-linux.sh",
-    "dev": "node index.js"
+    "start:qr": "node index.js",
+    "start:code": "node index.js"
+  },
+  "engines": {
+    "node": ">=18"
   },
   "author": "Picolas",
   "license": "ISC",

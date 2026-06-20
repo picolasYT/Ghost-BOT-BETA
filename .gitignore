@@ -1,13 +1,24 @@
+@"
 # Carpetas de autenticación y caché de WhatsApp Web
 .wwebjs_auth/
 .wwebjs_cache/
 cache/
+data/auth/
 
-# Dependencias de Node (muy pesadas)
+# Dependencias de Node
 node_modules/
 
-# Archivos de configuración de dependencias
-package-lock.json
-
-# Archivos de entorno (contienen credenciales sensibles)
+# Variables de entorno
 .env
+.env.*
+!.env.example
+
+# Binarios locales
+bin/
+
+# Scripts temporales/generados
+*-player-script.js
+
+# Lock de npm, si NO querés subirlo
+package-lock.json
+"@ | Set-Content .gitignore

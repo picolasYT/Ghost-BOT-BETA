@@ -13,6 +13,10 @@ async function loadWhatsappWeb() {
   return mod.default || mod
 }
 
+function getSubbotClientId(phone) {
+  return `ghost-subbot-${phone}`
+}
+
 async function startCommandHandler({ subClient, mainClient, config, MessageMedia, fs, path, cacheDir }) {
   subClient.commands = mainClient.commands
 
@@ -110,10 +114,12 @@ export default {
       }
 
       const { Client, LocalAuth } = await loadWhatsappWeb()
+      const clientId = getSubbotClientId(phone)
 
       const subClient = new Client({
         authStrategy: new LocalAuth({
-          clientId: `ghost-subbot-${phone}`
+          clientId,
+          dataPath: config.authPath || "./data/auth"
         }),
         puppeteer: {
           headless: true,
@@ -124,6 +130,15 @@ export default {
           ]
         }
       })
+
+      subClient.isSubbot = true
+      subClient.mainClientRef = client
+      subClient.subbotMeta = {
+        phone,
+        clientId,
+        ownerChat: message.from,
+        authPath: config.authPath || "./data/auth"
+      }
 
       subbots.set(phone, subClient)
 
