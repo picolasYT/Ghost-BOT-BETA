@@ -81,6 +81,31 @@ export CHROME_PATH=/usr/bin/chromium-browser
 npm start
 ```
 
+### Render
+
+Si queres usar la web de emparejamiento de subbots en Render, `whatsapp-web.js` necesita Chrome o Chromium real.
+
+Opciones:
+
+1. Instalar Chromium en el deploy y definir `CHROME_PATH`.
+2. Usar una ruta ya existente del sistema si Render la expone.
+
+Variables recomendadas:
+
+```env
+CHROME_PATH=/usr/bin/chromium
+DISABLE_SANDBOX=auto
+PUPPETEER_HEADLESS=true
+```
+
+Si tu servicio permite instalar paquetes del sistema, podes usar:
+
+```bash
+npm run install:render-chrome
+```
+
+Sin Chrome/Chromium disponible, el bot principal no se cae, pero la web no va a poder generar el código de emparejamiento del subbot.
+
 ### Termux
 
 ```bash

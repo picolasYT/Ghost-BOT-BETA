@@ -4,6 +4,7 @@ import config from "../config.js";
 import {
   buildChromiumArgs,
   detectRuntime,
+  resolveChromePath,
   resolveAuthPath,
   shouldDisableSandbox
 } from "./runtime.js";
@@ -14,6 +15,7 @@ export function createClient() {
   const runtime = detectRuntime();
   const authPath = resolveAuthPath(config.authPath);
   const disableSandbox = shouldDisableSandbox(runtime, config.disableSandbox);
+  const chromePath = resolveChromePath(config.chromePath);
 
   fs.mkdirSync(authPath, { recursive: true });
 
@@ -22,8 +24,8 @@ export function createClient() {
     args: buildChromiumArgs(runtime, disableSandbox)
   };
 
-  if (config.chromePath) {
-    puppeteer.executablePath = config.chromePath;
+  if (chromePath) {
+    puppeteer.executablePath = chromePath;
   }
 
   const client = new Client({

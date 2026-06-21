@@ -1,3 +1,5 @@
+import { resolveChromePath } from "./runtime.js";
+
 const subbotStore = global.subbotStore || (global.subbotStore = new Map());
 
 function cleanPhone(text = "") {
@@ -181,6 +183,7 @@ export async function startSubbot({
 
   const { Client, LocalAuth, MessageMedia: SubbotMessageMedia } = await loadWhatsappWeb();
   const clientId = getSubbotClientId(normalizedPhone);
+  const chromePath = resolveChromePath(config.chromePath);
   const subClient = new Client({
     authStrategy: new LocalAuth({
       clientId,
@@ -188,7 +191,7 @@ export async function startSubbot({
     }),
     puppeteer: {
       headless: config.headless !== false,
-      ...(config.chromePath ? { executablePath: config.chromePath } : {}),
+      ...(chromePath ? { executablePath: chromePath } : {}),
       args: [
         "--disable-dev-shm-usage",
         "--disable-gpu",

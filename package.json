@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node index.js",
     "start:qr": "node index.js",
-    "start:code": "node index.js"
+    "start:code": "node index.js",
+    "install:render-chrome": "bash ./scripts/install-render-chrome.sh"
   },
   "engines": {
     "node": ">=20"

@@ -1,5 +1,6 @@
 import os from "os";
 import path from "path";
+import fs from "fs";
 
 export function detectRuntime() {
   const isWindows = process.platform === "win32";
@@ -52,8 +53,35 @@ export function buildChromiumArgs(runtime, disableSandbox) {
   return args;
 }
 
+export function resolveChromePath(configuredPath = "") {
+  if (configuredPath && fs.existsSync(configuredPath)) {
+    return configuredPath;
+  }
+
+  const candidates = [
+    process.env.PUPPETEER_EXECUTABLE_PATH,
+    process.env.CHROMIUM_PATH,
+    process.env.GOOGLE_CHROME_BIN,
+    process.env.CHROME_BIN,
+    "/usr/bin/chromium",
+    "/usr/bin/chromium-browser",
+    "/usr/bin/google-chrome",
+    "/opt/render/project/.render/chrome/opt/google/chrome/chrome",
+    "/opt/render/.cache/puppeteer/chrome/linux-*/chrome-linux64/chrome"
+  ].filter(Boolean);
+
+  for (const candidate of candidates) {
+    if (!candidate.includes("*") && fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return "";
+}
+
 export function buildRuntimeSummary(runtime, config, commandsSize) {
   const authPath = resolveAuthPath(config.authPath);
+  const chromePath = resolveChromePath(config.chromePath);
 
   return [
     `Bot: ${config.botName}`,
@@ -63,7 +91,7 @@ export function buildRuntimeSummary(runtime, config, commandsSize) {
     `Prefijo: ${config.prefix}`,
     `Comandos: ${commandsSize}`,
     `Auth: ${authPath}`,
-    `Chrome: ${config.chromePath || "auto"}`
+    `Chrome: ${chromePath || "auto"}`
   ].join("\n");
 }
 
