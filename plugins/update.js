@@ -1,7 +1,10 @@
 import { execFile } from "child_process";
+import path from "path";
+import { fileURLToPath } from "url";
 import { promisify } from "util";
 
 const execFileAsync = promisify(execFile);
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 function trimOutput(text = "", maxLength = 1200) {
   const normalized = String(text || "").trim();
@@ -12,32 +15,35 @@ function trimOutput(text = "", maxLength = 1200) {
 
 async function runGit(args) {
   return await execFileAsync("git", args, {
-    cwd: process.cwd(),
+    cwd: repoRoot,
     windowsHide: true
   });
 }
 
-async function detectPullTarget() {
+async function detectBranch() {
   try {
     const { stdout } = await runGit(["branch", "--show-current"]);
     const branch = stdout.trim();
-
-    if (branch) {
-      return ["pull", "origin", branch];
-    }
+    if (branch) return branch;
   } catch {}
 
   try {
     const { stdout } = await runGit(["symbolic-ref", "refs/remotes/origin/HEAD"]);
-    const remoteHead = stdout.trim();
-    const branch = remoteHead.split("/").pop();
-
-    if (branch) {
-      return ["pull", "origin", branch];
-    }
+    const branch = stdout.trim().split("/").pop();
+    if (branch) return branch;
   } catch {}
 
-  return ["pull", "origin", "main"];
+  return "main";
+}
+
+async function detectRemoteUrl(fallbackRepoUrl) {
+  try {
+    const { stdout } = await runGit(["config", "--get", "remote.origin.url"]);
+    const url = stdout.trim();
+    if (url) return url;
+  } catch {}
+
+  return fallbackRepoUrl;
 }
 
 export default {
@@ -46,7 +52,7 @@ export default {
   category: "system",
   description: "Actualiza el bot haciendo git pull. Solo owner.",
 
-  async execute({ message }) {
+  async execute({ message, config }) {
     if (!message.fromMe) {
       return await message.reply("Solo el owner puede actualizar el bot desde su propia cuenta.");
     }
@@ -61,12 +67,17 @@ export default {
       } catch (error) {
         const detail = String(error?.stderr || error?.stdout || error?.message || "").toLowerCase();
 
-        if (!detail.includes("not currently on a branch")) {
+        if (detail.includes("not currently on a branch")) {
+          const branch = await detectBranch();
+          const remoteUrl = await detectRemoteUrl(config.repoUrl);
+          result = await runGit(["pull", remoteUrl, branch]);
+        } else if (detail.includes("does not appear to be a git repository")) {
+          const branch = await detectBranch();
+          const remoteUrl = await detectRemoteUrl(config.repoUrl);
+          result = await runGit(["pull", remoteUrl, branch]);
+        } else {
           throw error;
         }
-
-        const fallbackArgs = await detectPullTarget();
-        result = await runGit(fallbackArgs);
       }
 
       const output = trimOutput([result.stdout, result.stderr].filter(Boolean).join("\n"));

@@ -4,7 +4,9 @@ export default {
   ownerName: process.env.OWNER_NAME || "Picolas",
   ownerNumber: process.env.OWNER_NUMBER || process.env.PHONE_NUMBER || "",
   provider: process.env.PROVIDER || "baileys",
-  webPort: Number(process.env.WEB_PORT || 3000),
+  repoUrl: process.env.REPO_URL || "https://github.com/picolasYT/Ghost-BOT-BETA.git",
+  webPort: Number(process.env.PORT || process.env.WEB_PORT || 3000),
+  webHost: process.env.WEB_HOST || "0.0.0.0",
   authPath: process.env.AUTH_PATH || "./data/auth",
   chromePath:
     process.env.CHROME_PATH ||
