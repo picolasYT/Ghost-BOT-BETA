@@ -1,3 +1,4 @@
+import fs from "fs";
 import { Boom } from "@hapi/boom";
 import { bindBaileysEvents, createBaileysSessionRuntime } from "./baileysCompat.js";
 
@@ -9,6 +10,15 @@ function cleanPhone(text = "") {
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function removeSessionDir(sessionDir = "") {
+  if (!sessionDir) return;
+  try {
+    if (fs.existsSync(sessionDir)) {
+      fs.rmSync(sessionDir, { recursive: true, force: true });
+    }
+  } catch {}
 }
 
 function createEntry(phone) {
@@ -85,7 +95,7 @@ function buildCommandContext({
     } catch (error) {
       console.error("Error en subbot:", error);
       try {
-        await message.reply("❌ Error ejecutando comando en subbot.");
+        await message.reply("Error ejecutando comando en subbot.");
       } catch {}
     }
   };
@@ -94,6 +104,129 @@ function buildCommandContext({
 function normalizeDisconnectReason(reason) {
   const statusCode = new Boom(reason?.error)?.output?.statusCode;
   return String(statusCode || reason || "desconectado");
+}
+
+async function waitForSocketOpen(sock, timeoutMs = 5000) {
+  return await new Promise((resolve) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      resolve(false);
+    }, timeoutMs);
+
+    sock.ev.on("connection.update", ({ connection }) => {
+      if (settled) return;
+      if (connection === "open") {
+        settled = true;
+        clearTimeout(timer);
+        resolve(true);
+      }
+    });
+  });
+}
+
+function attachSubbotLifecycle({ sock, entry, mainClient, ownerChat, notifyOwner }) {
+  sock.ev.on("connection.update", async (update) => {
+    const { connection, lastDisconnect } = update;
+
+    if (connection === "open") {
+      touchEntry(entry, { status: "ready", error: "" });
+      if (notifyOwner) {
+        await notify(mainClient, ownerChat, "Subbot conectado y listo para usar comandos.");
+      }
+    }
+
+    if (connection === "close") {
+      const reasonText = normalizeDisconnectReason(lastDisconnect);
+
+      if (reasonText === "401" && entry.status === "pairing_code_ready") {
+        return;
+      }
+
+      touchEntry(entry, {
+        status: "disconnected",
+        error: reasonText
+      });
+
+      if (notifyOwner) {
+        await notify(mainClient, ownerChat, `Subbot desconectado: ${reasonText}`);
+      }
+    }
+  });
+}
+
+async function bootSubbotRuntime({
+  normalizedPhone,
+  mainClient,
+  config,
+  MessageMedia,
+  fs,
+  path,
+  cacheDir,
+  entry,
+  ownerChat,
+  notifyOwner
+}) {
+  const clientId = `ghost-subbot-${normalizedPhone}`;
+  const runtime = await createBaileysSessionRuntime({
+    clientId,
+    botName: `${config.botName || "Ghost-Bot"} Subbot`,
+    authPath: config.authPath,
+    isSubbot: true
+  });
+
+  const { sock, client, authPath: sessionDir, MessageMedia: CompatMessageMedia } = runtime;
+
+  client.mainClientRef = mainClient || null;
+  client.subbotMeta = {
+    phone: normalizedPhone,
+    clientId,
+    ownerChat,
+    authPath: config.authPath || "./data/auth",
+    sessionDir
+  };
+
+  touchEntry(entry, {
+    client,
+    sock,
+    authPath: sessionDir,
+    status: runtime.isRegistered ? "registered" : "starting",
+    pairingCode: "",
+    error: ""
+  });
+
+  const handleCommand = buildCommandContext({
+    subClient: client,
+    mainClient,
+    config,
+    MessageMedia: CompatMessageMedia || MessageMedia,
+    fs,
+    path,
+    cacheDir
+  });
+
+  await bindBaileysEvents({
+    sock,
+    client,
+    handleCommand,
+    showQr: false,
+    patchMainState: false,
+    botLabel: `Subbot ${normalizedPhone}`,
+    onReconnect: async () => {
+      touchEntry(entry, { status: "reconnecting" });
+    }
+  });
+
+  attachSubbotLifecycle({
+    sock,
+    entry,
+    mainClient,
+    ownerChat,
+    notifyOwner
+  });
+
+  return runtime;
 }
 
 export function listSubbots() {
@@ -190,99 +323,61 @@ export async function startSubbot({
     ownerChat
   });
 
-  const runtime = await createBaileysSessionRuntime({
-    clientId: `ghost-subbot-${normalizedPhone}`,
-    botName: `${config.botName || "Ghost-Bot"} Subbot`,
-    authPath: config.authPath,
-    isSubbot: true
-  });
-
-  const { sock, client, authPath: sessionDir, MessageMedia: CompatMessageMedia, isRegistered } = runtime;
-
-  client.mainClientRef = mainClient || null;
-  client.subbotMeta = {
-    phone: normalizedPhone,
-    clientId: `ghost-subbot-${normalizedPhone}`,
-    ownerChat,
-    authPath: config.authPath || "./data/auth",
-    sessionDir
-  };
-
-  touchEntry(entry, {
-    client,
-    sock,
-    authPath: sessionDir,
-    status: isRegistered ? "registered" : "starting"
-  });
-
-  const handleCommand = buildCommandContext({
-    subClient: client,
+  let runtime = await bootSubbotRuntime({
+    normalizedPhone,
     mainClient,
     config,
-    MessageMedia: CompatMessageMedia || MessageMedia,
+    MessageMedia,
     fs,
     path,
-    cacheDir
+    cacheDir,
+    entry,
+    ownerChat,
+    notifyOwner
   });
 
-  await bindBaileysEvents({
-    sock,
-    client,
-    handleCommand,
-    showQr: false,
-    patchMainState: false,
-    botLabel: `Subbot ${normalizedPhone}`,
-    onReconnect: async () => {
-      touchEntry(entry, { status: "reconnecting" });
-    }
-  });
+  if (runtime.isRegistered) {
+    const opened = await waitForSocketOpen(runtime.sock, 5000);
 
-  sock.ev.on("connection.update", async (update) => {
-    const { connection, lastDisconnect } = update;
-
-    if (connection === "open") {
-      touchEntry(entry, { status: "ready", error: "" });
-      if (notifyOwner) {
-        await notify(mainClient, ownerChat, "👻 Subbot conectado y listo para usar comandos.");
-      }
-    }
-
-    if (connection === "close") {
-      const reasonText = normalizeDisconnectReason(lastDisconnect);
-
-      if (reasonText === "401" && entry.status === "pairing_code_ready") {
-        return;
-      }
-
+    if (opened) {
       touchEntry(entry, {
-        status: "disconnected",
-        error: reasonText
+        status: "ready",
+        error: "",
+        pairingCode: ""
       });
-      if (notifyOwner) {
-        await notify(mainClient, ownerChat, `⚠️ Subbot desconectado: ${reasonText}`);
-      }
+
+      return {
+        phone: normalizedPhone,
+        pairingCode: "YA_VINCULADO",
+        clientId: runtime.client.subbotMeta.clientId,
+        alreadyLinked: true
+      };
     }
-  });
 
-  if (isRegistered) {
-    touchEntry(entry, {
-      status: "ready",
-      error: "",
-      pairingCode: ""
+    try {
+      await runtime.client.destroy?.();
+    } catch {}
+
+    removeSessionDir(runtime.authPath);
+
+    runtime = await bootSubbotRuntime({
+      normalizedPhone,
+      mainClient,
+      config,
+      MessageMedia,
+      fs,
+      path,
+      cacheDir,
+      entry,
+      ownerChat,
+      notifyOwner
     });
-
-    return {
-      phone: normalizedPhone,
-      pairingCode: "YA_VINCULADO",
-      clientId: client.subbotMeta.clientId,
-      alreadyLinked: true
-    };
   }
 
-  await delay(1500);
+  await delay(2500);
 
   try {
-    const pairingCode = await sock.requestPairingCode(normalizedPhone);
+    const pairingCode = await runtime.sock.requestPairingCode(normalizedPhone);
     touchEntry(entry, {
       status: "pairing_code_ready",
       pairingCode,
@@ -292,7 +387,7 @@ export async function startSubbot({
     return {
       phone: normalizedPhone,
       pairingCode,
-      clientId: client.subbotMeta.clientId,
+      clientId: runtime.client.subbotMeta.clientId,
       alreadyLinked: false
     };
   } catch (error) {
@@ -305,7 +400,7 @@ export async function startSubbot({
     });
 
     try {
-      await client.destroy?.();
+      await runtime.client.destroy?.();
     } catch {}
 
     throw new Error(message);

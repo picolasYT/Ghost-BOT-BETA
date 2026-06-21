@@ -4,7 +4,12 @@ function cleanPhone(text = "") {
   return text.replace(/\D/g, "");
 }
 
-function getSenderPhone(message) {
+function getSenderPhone(message, config) {
+  if (message?.fromMe) {
+    const ownerPhone = cleanPhone(config?.ownerNumber || config?.phoneNumber || "");
+    if (ownerPhone.length >= 8) return ownerPhone;
+  }
+
   const candidates = [
     message?.author,
     message?.from,
@@ -50,7 +55,7 @@ export default {
         return await message.reply("✅ Subbot apagado correctamente.");
       }
 
-      const phone = args.join(" ").trim() || getSenderPhone(message);
+      const phone = args.join(" ").trim() || getSenderPhone(message, config);
 
       if (!phone) {
         return await message.reply(
