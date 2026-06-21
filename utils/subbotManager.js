@@ -41,6 +41,34 @@ function touchEntry(entry, patch = {}) {
   return entry;
 }
 
+function destroyQuietly(client) {
+  if (!client) return;
+
+  try {
+    const maybePromise = client.destroy?.();
+    if (maybePromise?.catch) {
+      maybePromise.catch(() => {});
+    }
+  } catch {}
+}
+
+function buildSubbotErrorMessage(error, config) {
+  const message = String(error?.message || error || "");
+  const lowered = message.toLowerCase();
+
+  if (lowered.includes("could not find chrome")) {
+    const chromePath = config?.chromePath || "sin definir";
+    return [
+      "No se pudo iniciar el subbot porque Chrome/Chromium no esta disponible en este entorno.",
+      `CHROME_PATH actual: ${chromePath}`,
+      "En Render tenes que instalar Chrome/Chromium o definir CHROME_PATH a un ejecutable valido.",
+      "Mientras eso no exista, la web no puede generar pairing codes con whatsapp-web.js."
+    ].join(" ");
+  }
+
+  return message || "No se pudo iniciar el subbot.";
+}
+
 async function startCommandHandler({ subClient, mainClient, config, MessageMedia, fs, path, cacheDir }) {
   if (!mainClient?.commands) return;
 
@@ -244,7 +272,19 @@ export async function startSubbot({
     console.log(`Estado subbot ${normalizedPhone}: ${state}`);
   });
 
-  subClient.initialize();
+  try {
+    await subClient.initialize();
+  } catch (error) {
+    const friendlyMessage = buildSubbotErrorMessage(error, config);
+    touchEntry(entry, {
+      client: null,
+      status: "error",
+      error: friendlyMessage
+    });
+    destroyQuietly(subClient);
+    throw new Error(friendlyMessage);
+  }
+
   await wait(7000);
 
   if (typeof subClient.requestPairingCode !== "function") {
@@ -270,10 +310,13 @@ export async function startSubbot({
       clientId
     };
   } catch (error) {
+    const friendlyMessage = buildSubbotErrorMessage(error, config);
     touchEntry(entry, {
+      client: null,
       status: "error",
-      error: error?.message || "No se pudo generar el codigo."
+      error: friendlyMessage
     });
-    throw error;
+    destroyQuietly(subClient);
+    throw new Error(friendlyMessage);
   }
 }
