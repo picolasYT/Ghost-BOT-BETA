@@ -1,4 +1,5 @@
-import { resolveChromePath } from "./runtime.js";
+import { Boom } from "@hapi/boom";
+import { bindBaileysEvents, createBaileysSessionRuntime } from "./baileysCompat.js";
 
 const subbotStore = global.subbotStore || (global.subbotStore = new Map());
 
@@ -6,17 +7,8 @@ function cleanPhone(text = "") {
   return text.replace(/\D/g, "");
 }
 
-function wait(ms) {
+function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function loadWhatsappWeb() {
-  const mod = await import("whatsapp-web.js");
-  return mod.default || mod;
-}
-
-function getSubbotClientId(phone) {
-  return `ghost-subbot-${phone}`;
 }
 
 function createEntry(phone) {
@@ -26,10 +18,12 @@ function createEntry(phone) {
   const entry = {
     phone,
     client: null,
+    sock: null,
     status: "idle",
     pairingCode: "",
     error: "",
     ownerChat: "",
+    authPath: "",
     createdAt: Date.now(),
     updatedAt: Date.now()
   };
@@ -43,40 +37,25 @@ function touchEntry(entry, patch = {}) {
   return entry;
 }
 
-function destroyQuietly(client) {
-  if (!client) return;
-
+async function notify(mainClient, ownerChat, text) {
+  if (!mainClient || !ownerChat || !text) return;
   try {
-    const maybePromise = client.destroy?.();
-    if (maybePromise?.catch) {
-      maybePromise.catch(() => {});
-    }
+    await mainClient.sendMessage(ownerChat, text);
   } catch {}
 }
 
-function buildSubbotErrorMessage(error, config) {
-  const message = String(error?.message || error || "");
-  const lowered = message.toLowerCase();
+function buildCommandContext({
+  subClient,
+  mainClient,
+  config,
+  MessageMedia,
+  fs,
+  path,
+  cacheDir
+}) {
+  subClient.commands = mainClient?.commands || new Map();
 
-  if (lowered.includes("could not find chrome")) {
-    const chromePath = config?.chromePath || "sin definir";
-    return [
-      "No se pudo iniciar el subbot porque Chrome/Chromium no esta disponible en este entorno.",
-      `CHROME_PATH actual: ${chromePath}`,
-      "En Render tenes que instalar Chrome/Chromium o definir CHROME_PATH a un ejecutable valido.",
-      "Mientras eso no exista, la web no puede generar pairing codes con whatsapp-web.js."
-    ].join(" ");
-  }
-
-  return message || "No se pudo iniciar el subbot.";
-}
-
-async function startCommandHandler({ subClient, mainClient, config, MessageMedia, fs, path, cacheDir }) {
-  if (!mainClient?.commands) return;
-
-  subClient.commands = mainClient.commands;
-
-  async function handleCommand(message) {
+  return async function handleCommand(message) {
     try {
       if (!message?.body) return;
       if (!message.body.startsWith(config.prefix)) return;
@@ -109,22 +88,12 @@ async function startCommandHandler({ subClient, mainClient, config, MessageMedia
         await message.reply("❌ Error ejecutando comando en subbot.");
       } catch {}
     }
-  }
-
-  subClient.on("message", async (message) => {
-    if (!message.fromMe) await handleCommand(message);
-  });
-
-  subClient.on("message_create", async (message) => {
-    if (message.fromMe) await handleCommand(message);
-  });
+  };
 }
 
-async function notify(mainClient, ownerChat, text) {
-  if (!mainClient || !ownerChat || !text) return;
-  try {
-    await mainClient.sendMessage(ownerChat, text);
-  } catch {}
+function normalizeDisconnectReason(reason) {
+  const statusCode = new Boom(reason?.error)?.output?.statusCode;
+  return String(statusCode || reason || "desconectado");
 }
 
 export function listSubbots() {
@@ -155,7 +124,15 @@ export async function stopSubbot(phone) {
   }
 
   touchEntry(entry, { status: "stopping" });
-  await entry.client.destroy();
+
+  try {
+    await entry.client.logout?.();
+  } catch {}
+
+  try {
+    await entry.client.destroy?.();
+  } catch {}
+
   subbotStore.delete(normalized);
 }
 
@@ -177,149 +154,128 @@ export async function startSubbot({
   }
 
   const existing = subbotStore.get(normalizedPhone);
-  if (existing?.client && existing.status !== "error") {
+  if (existing?.client && existing.status !== "error" && existing.status !== "disconnected") {
     throw new Error("Ese numero ya tiene un subbot iniciado.");
   }
 
-  const { Client, LocalAuth, MessageMedia: SubbotMessageMedia } = await loadWhatsappWeb();
-  const clientId = getSubbotClientId(normalizedPhone);
-  const chromePath = resolveChromePath(config.chromePath);
-  const subClient = new Client({
-    authStrategy: new LocalAuth({
-      clientId,
-      dataPath: config.authPath || "./data/auth"
-    }),
-    puppeteer: {
-      headless: config.headless !== false,
-      ...(chromePath ? { executablePath: chromePath } : {}),
-      args: [
-        "--disable-dev-shm-usage",
-        "--disable-gpu",
-        "--no-first-run",
-        "--no-default-browser-check",
-        ...(config.disableSandbox !== "false"
-          ? ["--no-sandbox", "--disable-setuid-sandbox"]
-          : [])
-      ]
-    }
-  });
-
-  subClient.isSubbot = true;
-  subClient.mainClientRef = mainClient || null;
-  subClient.subbotMeta = {
-    phone: normalizedPhone,
-    clientId,
-    ownerChat,
-    authPath: config.authPath || "./data/auth"
-  };
-
   const entry = createEntry(normalizedPhone);
   touchEntry(entry, {
-    client: subClient,
+    client: null,
+    sock: null,
     status: "starting",
     pairingCode: "",
     error: "",
     ownerChat
   });
 
-  await startCommandHandler({
-    subClient,
+  const runtime = await createBaileysSessionRuntime({
+    clientId: `ghost-subbot-${normalizedPhone}`,
+    botName: `${config.botName || "Ghost-Bot"} Subbot`,
+    authPath: config.authPath,
+    isSubbot: true
+  });
+
+  const { sock, client, authPath: sessionDir, MessageMedia: CompatMessageMedia, isRegistered } = runtime;
+
+  client.mainClientRef = mainClient || null;
+  client.subbotMeta = {
+    phone: normalizedPhone,
+    clientId: `ghost-subbot-${normalizedPhone}`,
+    ownerChat,
+    authPath: config.authPath || "./data/auth",
+    sessionDir
+  };
+
+  touchEntry(entry, {
+    client,
+    sock,
+    authPath: sessionDir,
+    status: isRegistered ? "registered" : "starting"
+  });
+
+  const handleCommand = buildCommandContext({
+    subClient: client,
     mainClient,
     config,
-    MessageMedia: SubbotMessageMedia || MessageMedia,
+    MessageMedia: CompatMessageMedia || MessageMedia,
     fs,
     path,
     cacheDir
   });
 
-  subClient.on("authenticated", async () => {
-    touchEntry(entry, { status: "authenticated", error: "" });
-    if (notifyOwner) {
-      await notify(mainClient, ownerChat, "✅ Subbot autenticado correctamente.");
+  await bindBaileysEvents({
+    sock,
+    client,
+    handleCommand,
+    onReconnect: async () => {
+      touchEntry(entry, { status: "reconnecting" });
     }
   });
 
-  subClient.on("ready", async () => {
-    touchEntry(entry, { status: "ready", error: "" });
-    if (notifyOwner) {
-      await notify(mainClient, ownerChat, "👻 Subbot conectado y listo para usar comandos.");
+  sock.ev.on("connection.update", async (update) => {
+    const { connection, lastDisconnect } = update;
+
+    if (connection === "open") {
+      touchEntry(entry, { status: "ready", error: "" });
+      if (notifyOwner) {
+        await notify(mainClient, ownerChat, "👻 Subbot conectado y listo para usar comandos.");
+      }
+    }
+
+    if (connection === "close") {
+      const reasonText = normalizeDisconnectReason(lastDisconnect);
+      touchEntry(entry, {
+        status: "disconnected",
+        error: reasonText
+      });
+      if (notifyOwner) {
+        await notify(mainClient, ownerChat, `⚠️ Subbot desconectado: ${reasonText}`);
+      }
     }
   });
 
-  subClient.on("disconnected", async (reason) => {
+  if (isRegistered) {
     touchEntry(entry, {
-      status: "disconnected",
-      error: String(reason || "")
+      status: "ready",
+      error: "",
+      pairingCode: ""
     });
-    if (notifyOwner) {
-      await notify(mainClient, ownerChat, `⚠️ Subbot desconectado: ${reason}`);
-    }
-  });
 
-  subClient.on("auth_failure", async (reason) => {
-    touchEntry(entry, {
-      status: "error",
-      error: String(reason || "sin detalle")
-    });
-    if (notifyOwner) {
-      await notify(
-        mainClient,
-        ownerChat,
-        `❌ Fallo la autenticacion del subbot: ${reason || "sin detalle"}`
-      );
-    }
-  });
-
-  subClient.on("change_state", (state) => {
-    touchEntry(entry, { status: String(state || "unknown").toLowerCase() });
-    console.log(`Estado subbot ${normalizedPhone}: ${state}`);
-  });
-
-  try {
-    await subClient.initialize();
-  } catch (error) {
-    const friendlyMessage = buildSubbotErrorMessage(error, config);
-    touchEntry(entry, {
-      client: null,
-      status: "error",
-      error: friendlyMessage
-    });
-    destroyQuietly(subClient);
-    throw new Error(friendlyMessage);
+    return {
+      phone: normalizedPhone,
+      pairingCode: "YA_VINCULADO",
+      clientId: client.subbotMeta.clientId
+    };
   }
 
-  await wait(7000);
-
-  if (typeof subClient.requestPairingCode !== "function") {
-    touchEntry(entry, {
-      status: "error",
-      error: "Tu version de whatsapp-web.js no soporta codigo de emparejamiento."
-    });
-    throw new Error(
-      "Tu version de whatsapp-web.js no soporta codigo de emparejamiento. Actualiza con npm i whatsapp-web.js@latest"
-    );
-  }
+  await delay(1500);
 
   try {
-    const pairingCode = await subClient.requestPairingCode(normalizedPhone);
+    const pairingCode = await sock.requestPairingCode(normalizedPhone);
     touchEntry(entry, {
       status: "pairing_code_ready",
       pairingCode,
       error: ""
     });
+
     return {
       phone: normalizedPhone,
       pairingCode,
-      clientId
+      clientId: client.subbotMeta.clientId
     };
   } catch (error) {
-    const friendlyMessage = buildSubbotErrorMessage(error, config);
+    const message = String(error?.message || "No se pudo generar el codigo.");
     touchEntry(entry, {
       client: null,
+      sock: null,
       status: "error",
-      error: friendlyMessage
+      error: message
     });
-    destroyQuietly(subClient);
-    throw new Error(friendlyMessage);
+
+    try {
+      await client.destroy?.();
+    } catch {}
+
+    throw new Error(message);
   }
 }

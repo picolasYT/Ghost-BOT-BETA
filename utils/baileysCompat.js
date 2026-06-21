@@ -401,6 +401,22 @@ export async function createBaileysRuntime() {
   const runtime = detectRuntime();
   const authRoot = resolveAuthPath(config.authPath);
   const clientId = "ghost-bot";
+  return await createBaileysSessionRuntime({
+    clientId,
+    botName: config.botName || "Ghost-Bot",
+    authPath: config.authPath,
+    isSubbot: false
+  });
+}
+
+export async function createBaileysSessionRuntime({
+  clientId,
+  botName = "Ghost-Bot",
+  authPath = config.authPath,
+  isSubbot = false
+}) {
+  const runtime = detectRuntime();
+  const authRoot = resolveAuthPath(authPath);
   const sessionDir = getSessionFolder(authRoot, clientId);
 
   ensureDir(authRoot);
@@ -416,7 +432,7 @@ export async function createBaileysRuntime() {
     },
     version,
     logger,
-    browser: Browsers.ubuntu(config.botName || "Ghost-Bot"),
+    browser: Browsers.ubuntu(botName),
     markOnlineOnConnect: false,
     printQRInTerminal: false,
     syncFullHistory: false
@@ -425,7 +441,7 @@ export async function createBaileysRuntime() {
   const client = buildClientAdapter(sock);
   client.runtime = runtime;
   client.authPath = sessionDir;
-  client.isSubbot = false;
+  client.isSubbot = isSubbot;
 
   sock.ev.on("creds.update", saveCreds);
 
