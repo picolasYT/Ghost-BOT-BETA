@@ -10,14 +10,16 @@
     "start:code": "node index.js"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "author": "Picolas",
   "license": "ISC",
   "dependencies": {
+    "@hapi/boom": "^9.1.4",
     "@distube/ytdl-core": "^4.16.12",
     "@whiskeysockets/baileys": "^7.0.0-rc.9",
     "dotenv": "^16.6.1",
+    "pino": "^9.6.0",
     "qrcode-terminal": "^0.12.0",
     "sharp": "^0.34.5",
     "whatsapp-web.js": "^1.34.1",

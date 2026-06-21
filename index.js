@@ -4,7 +4,12 @@ import path from "path";
 import qrcode from "qrcode-terminal";
 import config from "./config.js";
 import { loadPlugins } from "./utils/loadPlugins.js";
-import { createClient } from "./utils/createClient.js";
+import { createClient as createLegacyClient } from "./utils/createClient.js";
+import {
+  bindBaileysEvents,
+  createBaileysRuntime,
+  maybeRequestPairingCode
+} from "./utils/baileysCompat.js";
 import { getStartupHints } from "./utils/runtime.js";
 import {
   formatId,
@@ -58,14 +63,12 @@ setInterval(() => {
   clearCacheFolder();
 }, 60 * 1000);
 
-const { client, runtime, authPath, disableSandbox, MessageMedia } = createClient();
-
-async function reloadCommands() {
-  client.commands = await loadPlugins();
-  return client.commands.size;
+async function buildExecutionContext(base) {
+  base.client.commands = await loadPlugins();
+  return base;
 }
 
-async function handleCommand(message) {
+async function handleCommand(message, client, shared) {
   try {
     if (!message?.body) return;
 
@@ -97,14 +100,17 @@ async function handleCommand(message) {
       message,
       args,
       config,
-      MessageMedia,
+      MessageMedia: shared.MessageMedia,
       fs,
       path,
       cacheDir: CACHE_DIR,
-      runtime,
-      authPath,
-      disableSandbox,
-      reloadCommands,
+      runtime: shared.runtime,
+      authPath: shared.authPath,
+      disableSandbox: shared.disableSandbox,
+      reloadCommands: async () => {
+        client.commands = await loadPlugins();
+        return client.commands.size;
+      },
       reply: (content, options) => message.reply(content, undefined, options)
     });
   } catch (error) {
@@ -115,82 +121,129 @@ async function handleCommand(message) {
   }
 }
 
+function logStartup(shared, commandsSize) {
+  logBanner([
+    `${config.botName} iniciado`,
+    `${shared.runtime.platform}/${shared.runtime.arch} | Node ${shared.runtime.node}`,
+    `Comandos: ${commandsSize} | Auth: ${shared.authPath}`,
+    `Provider: ${config.provider}`
+  ]);
+
+  for (const hint of getStartupHints(shared.runtime, config)) {
+    logWarn(hint);
+  }
+}
+
+async function startLegacyBot() {
+  const shared = await buildExecutionContext(createLegacyClient());
+  const { client } = shared;
+
+  logStartup(shared, client.commands.size);
+  logInfo(`Chromium sandbox: ${shared.disableSandbox ? "off" : "on"}`);
+
+  client.on("qr", (qr) => {
+    if (config.loginMethod?.toLowerCase() !== "qr") return;
+    logStep("Escanea este QR con WhatsApp.");
+    qrcode.generate(qr, { small: true });
+  });
+
+  client.on("code", (code) => {
+    logInfo(`Codigo de emparejamiento recibido: ${code}`);
+  });
+
+  client.on("loading_screen", (percent, message) => {
+    logStep(`Cargando... ${percent}% - ${message}`);
+  });
+
+  client.on("authenticated", () => {
+    logSuccess("Autenticado correctamente.");
+  });
+
+  client.on("ready", () => {
+    logSuccess(`${config.botName} esta listo.`);
+    logInfo(`Prefijo: ${config.prefix} | Owner: ${config.ownerName} | Provider: ${config.provider}`);
+  });
+
+  client.on("auth_failure", (msg) => {
+    logError(`Fallo la autenticacion: ${msg}`);
+  });
+
+  client.on("disconnected", (reason) => {
+    logWarn(`Bot desconectado: ${reason}`);
+  });
+
+  client.on("message", async (message) => {
+    if (!message.fromMe) {
+      await handleCommand(message, client, shared);
+    }
+  });
+
+  client.on("message_create", async (message) => {
+    if (message.fromMe) {
+      await handleCommand(message, client, shared);
+    }
+  });
+
+  client.initialize();
+
+  if (config.loginMethod?.toLowerCase() === "code") {
+    const rawPhone = config.phoneNumber || process.env.PHONE_NUMBER || "";
+    const phone = (rawPhone.match(/\d+/g) || []).join("");
+
+    if (!phone) {
+      logWarn("Se selecciono el modo code pero no se proporciono PHONE_NUMBER. Se usara QR.");
+    } else {
+      try {
+        logStep(`Solicitando codigo de emparejamiento para ${phone}...`);
+        const pairingCode = await client.requestPairingCode(phone);
+        logInfo(`Codigo de emparejamiento: ${pairingCode}`);
+      } catch (err) {
+        logError("Error generando codigo de emparejamiento.", err);
+      }
+    }
+  }
+}
+
+let isRestartingBaileys = false;
+
+async function startBaileysBot() {
+  const shared = await buildExecutionContext(await createBaileysRuntime());
+  const { sock, client } = shared;
+
+  logStartup(shared, client.commands.size);
+
+  await bindBaileysEvents({
+    sock,
+    client,
+    handleCommand: async (message, currentClient) => {
+      await handleCommand(message, currentClient, shared);
+    },
+    onReconnect: async () => {
+      if (isRestartingBaileys) return;
+      isRestartingBaileys = true;
+
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        await startBaileysBot();
+      } catch (error) {
+        logError("Error reconectando Baileys.", error);
+      } finally {
+        isRestartingBaileys = false;
+      }
+    }
+  });
+
+  await maybeRequestPairingCode(sock, shared.isRegistered);
+}
+
 async function startBot() {
   try {
-    await reloadCommands();
-
-    logBanner([
-      `${config.botName} iniciado`,
-      `${runtime.platform}/${runtime.arch} | Node ${runtime.node}`,
-      `Comandos: ${client.commands.size} | Auth: ${authPath}`,
-      `Chromium sandbox: ${disableSandbox ? "off" : "on"}`
-    ]);
-
-    for (const hint of getStartupHints(runtime, config)) {
-      logWarn(hint);
+    if ((config.provider || "").toLowerCase() === "whatsapp-web.js") {
+      await startLegacyBot();
+      return;
     }
 
-    client.on("qr", (qr) => {
-      if (config.loginMethod?.toLowerCase() !== "qr") return;
-      logStep("Escanea este QR con WhatsApp.");
-      qrcode.generate(qr, { small: true });
-    });
-
-    client.on("code", (code) => {
-      logInfo(`Codigo de emparejamiento recibido: ${code}`);
-    });
-
-    client.on("loading_screen", (percent, message) => {
-      logStep(`Cargando... ${percent}% - ${message}`);
-    });
-
-    client.on("authenticated", () => {
-      logSuccess("Autenticado correctamente.");
-    });
-
-    client.on("ready", () => {
-      logSuccess(`${config.botName} esta listo.`);
-      logInfo(`Prefijo: ${config.prefix} | Owner: ${config.ownerName} | Provider: ${config.provider}`);
-    });
-
-    client.on("auth_failure", (msg) => {
-      logError(`Fallo la autenticacion: ${msg}`);
-    });
-
-    client.on("disconnected", (reason) => {
-      logWarn(`Bot desconectado: ${reason}`);
-    });
-
-    client.on("message", async (message) => {
-      if (!message.fromMe) {
-        await handleCommand(message);
-      }
-    });
-
-    client.on("message_create", async (message) => {
-      if (message.fromMe) {
-        await handleCommand(message);
-      }
-    });
-
-    client.initialize();
-
-    if (config.loginMethod?.toLowerCase() === "code") {
-      const rawPhone = config.phoneNumber || process.env.PHONE_NUMBER || "";
-      const phone = (rawPhone.match(/\d+/g) || []).join("");
-
-      if (!phone) {
-        logWarn("Se selecciono el modo code pero no se proporciono PHONE_NUMBER. Se usara QR.");
-      } else {
-        try {
-          logStep(`Solicitando codigo de emparejamiento para ${phone}...`);
-          const pairingCode = await client.requestPairingCode(phone);
-          logInfo(`Codigo de emparejamiento: ${pairingCode}`);
-        } catch (err) {
-          logError("Error generando codigo de emparejamiento.", err);
-        }
-      }
-    }
+    await startBaileysBot();
   } catch (error) {
     logError("Error iniciando el bot.", error);
   }

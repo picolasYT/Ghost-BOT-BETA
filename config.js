@@ -2,7 +2,7 @@ export default {
   prefix: process.env.PREFIX || "!",
   botName: process.env.BOT_NAME || "Ghost-Bot",
   ownerName: process.env.OWNER_NAME || "Picolas",
-  provider: process.env.PROVIDER || "whatsapp-web.js",
+  provider: process.env.PROVIDER || "baileys",
   authPath: process.env.AUTH_PATH || "./data/auth",
   chromePath:
     process.env.CHROME_PATH ||

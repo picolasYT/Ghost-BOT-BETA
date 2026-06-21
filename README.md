@@ -1,16 +1,16 @@
 # Ghost-BOT Beta
 
-Bot modular de WhatsApp basado actualmente en `whatsapp-web.js`.
+Bot modular de WhatsApp basado actualmente en `Baileys` como provider principal.
 
 ## Que usa hoy
 
-Este proyecto **ya tiene Baileys instalado**, pero el codigo activo del bot corre con `whatsapp-web.js`.
+Este proyecto usa `Baileys` como provider principal para mejorar compatibilidad con Termux, Linux y entornos sin Chromium.
 
 Eso significa:
 
-- Hoy funciona con navegador Chromium/Puppeteer.
-- No hubo migracion completa a Baileys todavia.
-- La estructura ya quedo preparada para una futura migracion mas ordenada.
+- El arranque principal ya no depende de Chromium.
+- La compatibilidad con Termux mejora mucho frente a `whatsapp-web.js`.
+- Algunos flujos avanzados heredados, como ciertos subbots, todavia usan `whatsapp-web.js`.
 
 ## Mejoras agregadas
 
@@ -22,7 +22,7 @@ Eso significa:
 
 ## Requisitos
 
-- Node.js 18 o superior
+- Node.js 20 o superior
 - `npm install`
 - Chromium o Chrome disponible si tu entorno no lo resuelve automaticamente
 
@@ -44,7 +44,7 @@ AUTH_PATH=./data/auth
 CHROME_PATH=
 PUPPETEER_HEADLESS=true
 DISABLE_SANDBOX=auto
-PROVIDER=whatsapp-web.js
+PROVIDER=baileys
 ```
 
 ## Plataformas
@@ -95,6 +95,6 @@ Si Chromium cambia de ruta en tu instalacion, ajusta `CHROME_PATH`.
 - `!uptime`: muestra cuanto lleva encendido el bot.
 - `!reload`: recarga plugins sin reiniciar el proceso. Solo responde desde la cuenta del owner.
 
-## Nota sobre Baileys
+## Nota sobre compatibilidad
 
-Si queres, el siguiente paso puede ser una migracion completa a Baileys. No la hice ahora porque implicaria reescribir la capa de eventos, envio de mensajes, medios, grupos y autenticacion para no romper tus plugins actuales.
+El bot principal ya arranca con Baileys, pero algunos comandos heredados siguen pensados originalmente para `whatsapp-web.js`. El caso mas claro hoy es la capa de subbots.
