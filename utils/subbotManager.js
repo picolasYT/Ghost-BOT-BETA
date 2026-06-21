@@ -158,8 +158,26 @@ export async function startSubbot({
   }
 
   const existing = subbotStore.get(normalizedPhone);
+  if (existing?.status === "pairing_code_ready" && existing.pairingCode) {
+    return {
+      phone: normalizedPhone,
+      pairingCode: existing.pairingCode,
+      clientId: existing.client?.subbotMeta?.clientId || `ghost-subbot-${normalizedPhone}`,
+      alreadyLinked: false
+    };
+  }
+
+  if (existing?.status === "ready" || existing?.status === "registered") {
+    return {
+      phone: normalizedPhone,
+      pairingCode: "YA_VINCULADO",
+      clientId: existing.client?.subbotMeta?.clientId || `ghost-subbot-${normalizedPhone}`,
+      alreadyLinked: true
+    };
+  }
+
   if (existing?.client && existing.status !== "error" && existing.status !== "disconnected") {
-    throw new Error("Ese numero ya tiene un subbot iniciado.");
+    throw new Error("Ese numero ya tiene un subbot iniciandose. Espera unos segundos y proba de nuevo.");
   }
 
   const entry = createEntry(normalizedPhone);

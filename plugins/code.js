@@ -5,7 +5,20 @@ function cleanPhone(text = "") {
 }
 
 function getSenderPhone(message) {
-  return cleanPhone(message?.author || message?.from || "");
+  const candidates = [
+    message?.author,
+    message?.from,
+    message?._data?.author,
+    message?._data?.id?._serialized,
+    message?._data?.id?.remote
+  ];
+
+  for (const candidate of candidates) {
+    const phone = cleanPhone(candidate || "");
+    if (phone.length >= 8) return phone;
+  }
+
+  return "";
 }
 
 export default {
@@ -66,7 +79,7 @@ export default {
       }
 
       await message.reply(
-        `📲 Número detectado: *${result.phone}*\n\nEntrá en WhatsApp a:\nDispositivos vinculados > Vincular con número de teléfono`
+        `📲 Número detectado: *${result.phone}*\n\nEntrá en WhatsApp a:\nDispositivos vinculados > Vincular con número de teléfono\n\nTe mando el código en el siguiente mensaje para que lo copies más fácil.`
       );
 
       await message.reply(result.pairingCode);
