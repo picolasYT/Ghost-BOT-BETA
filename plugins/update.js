@@ -28,9 +28,9 @@ async function detectBranch() {
   } catch {}
 
   try {
-    const { stdout } = await runGit(["symbolic-ref", "refs/remotes/origin/HEAD"]);
-    const branch = stdout.trim().split("/").pop();
-    if (branch) return branch;
+    const { stdout } = await runGit(["rev-parse", "--abbrev-ref", "HEAD"]);
+    const branch = stdout.trim();
+    if (branch && branch !== "HEAD") return branch;
   } catch {}
 
   return "main";
@@ -46,46 +46,50 @@ async function detectRemoteUrl(fallbackRepoUrl) {
   return fallbackRepoUrl;
 }
 
+async function hasLocalChanges() {
+  const { stdout } = await runGit(["status", "--porcelain"]);
+  return Boolean(stdout.trim());
+}
+
 export default {
   name: "update",
   aliases: ["actualizar", "gitpull"],
   category: "system",
   description: "Actualiza el bot haciendo git pull. Solo owner.",
 
-  async execute({ message, config }) {
+  async execute({ message, config, reloadCommands }) {
     if (!message.fromMe) {
       return await message.reply("Solo el owner puede actualizar el bot desde su propia cuenta.");
     }
 
-    await message.reply("⏳ Ejecutando actualizacion del bot...");
+    await message.reply("⏳ Buscando actualizaciones del bot...");
 
     try {
-      let result;
-
-      try {
-        result = await runGit(["pull"]);
-      } catch (error) {
-        const detail = String(error?.stderr || error?.stdout || error?.message || "").toLowerCase();
-
-        if (detail.includes("not currently on a branch")) {
-          const branch = await detectBranch();
-          const remoteUrl = await detectRemoteUrl(config.repoUrl);
-          result = await runGit(["pull", remoteUrl, branch]);
-        } else if (detail.includes("does not appear to be a git repository")) {
-          const branch = await detectBranch();
-          const remoteUrl = await detectRemoteUrl(config.repoUrl);
-          result = await runGit(["pull", remoteUrl, branch]);
-        } else {
-          throw error;
-        }
+      if (await hasLocalChanges()) {
+        return await message.reply(
+          "⚠️ No hice update porque hay cambios locales sin subir en el servidor. Hacé commit o limpiá esos cambios primero."
+        );
       }
 
+      const branch = await detectBranch();
+      const remoteUrl = await detectRemoteUrl(config.repoUrl);
+
+      await runGit(["fetch", remoteUrl, branch]);
+      const result = await runGit(["pull", "--ff-only", remoteUrl, branch]);
+
       const output = trimOutput([result.stdout, result.stderr].filter(Boolean).join("\n"));
+      const updated = !/already up to date/i.test(output);
+
+      let reloadText = "";
+      if (updated && typeof reloadCommands === "function") {
+        const total = await reloadCommands();
+        reloadText = `\n\nPlugins recargados: ${total}`;
+      }
 
       await message.reply(
         output
-          ? `✅ Actualizacion completada.\n\n${output}`
-          : "✅ Actualizacion completada."
+          ? `✅ Update completado.\n\n${output}${reloadText}`
+          : `✅ Update completado.${reloadText}`
       );
     } catch (error) {
       const stdout = trimOutput(error?.stdout || "");
