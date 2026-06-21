@@ -137,7 +137,7 @@ Desde esa pagina ahora podes:
 
 - crear subbots desde el navegador
 - obtener el codigo de emparejamiento sin usar el chat
-- apagar subbots activos
+- generar el codigo sin exponer sesiones ni numeros al volver a entrar
 
 Si queres cambiar host o puerto:
 

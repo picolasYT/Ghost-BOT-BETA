@@ -107,6 +107,10 @@ export function listSubbots() {
   }));
 }
 
+export function listPublicSubbots() {
+  return [];
+}
+
 export function getSubbot(phone) {
   const normalized = cleanPhone(phone);
   return normalized ? subbotStore.get(normalized) || null : null;
@@ -224,6 +228,11 @@ export async function startSubbot({
 
     if (connection === "close") {
       const reasonText = normalizeDisconnectReason(lastDisconnect);
+
+      if (reasonText === "401" && entry.status === "pairing_code_ready") {
+        return;
+      }
+
       touchEntry(entry, {
         status: "disconnected",
         error: reasonText

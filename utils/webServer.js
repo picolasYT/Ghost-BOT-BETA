@@ -1,6 +1,6 @@
 import http from "http";
 import { getAppState, patchWebState } from "./appState.js";
-import { listSubbots, startSubbot, stopSubbot } from "./subbotManager.js";
+import { listPublicSubbots, startSubbot } from "./subbotManager.js";
 
 function sendJson(res, statusCode, payload) {
   const body = JSON.stringify(payload);
@@ -235,30 +235,6 @@ function renderPage() {
         white-space: pre-wrap;
       }
 
-      .subbot {
-        padding: 16px;
-        border-radius: 18px;
-        border: 1px solid rgba(148, 163, 184, 0.14);
-        background: rgba(9, 15, 27, 0.82);
-      }
-
-      .subbot-top {
-        display: flex;
-        justify-content: space-between;
-        gap: 10px;
-        align-items: center;
-      }
-
-      .badge {
-        display: inline-flex;
-        align-items: center;
-        padding: 6px 10px;
-        border-radius: 999px;
-        border: 1px solid rgba(148, 163, 184, 0.16);
-        background: rgba(17, 24, 39, 0.85);
-        font-size: 0.82rem;
-      }
-
       .code {
         display: inline-block;
         margin-top: 12px;
@@ -270,12 +246,6 @@ function renderPage() {
         font-size: 1.6rem;
         letter-spacing: 0.15em;
         font-weight: 800;
-      }
-
-      .note {
-        margin-top: 12px;
-        color: var(--muted);
-        font-size: 0.92rem;
       }
 
       @media (max-width: 980px) {
@@ -305,7 +275,7 @@ function renderPage() {
       </section>
 
       <section class="grid">
-        <article class="panel">
+        <article class="panel" style="grid-column: 1 / -1;">
           <div class="panel-body stack">
             <div>
               <h2>Vincular número</h2>
@@ -319,22 +289,11 @@ function renderPage() {
             <div class="output" id="output">Esperando acción...</div>
           </div>
         </article>
-
-        <article class="panel">
-          <div class="panel-body stack">
-            <div>
-              <h2>Sesiones activas</h2>
-              <p class="lead">Acá ves los subbots iniciados desde web o desde WhatsApp.</p>
-            </div>
-            <div id="subbots"></div>
-          </div>
-        </article>
       </section>
     </div>
 
     <script>
       const cardsEl = document.getElementById("cards");
-      const subbotsEl = document.getElementById("subbots");
       const outputEl = document.getElementById("output");
       const startBtn = document.getElementById("startBtn");
       const refreshBtn = document.getElementById("refreshBtn");
@@ -386,53 +345,9 @@ function renderPage() {
         \`).join("");
       }
 
-      function renderSubbots(items) {
-        if (!items.length) {
-          subbotsEl.innerHTML = '<div class="subbot">Todavía no hay subbots activos.</div>';
-          return;
-        }
-
-        subbotsEl.innerHTML = items.map((item) => \`
-          <div class="subbot">
-            <div class="subbot-top">
-              <strong>\${escapeHtml(item.phone)}</strong>
-              <span class="badge">\${escapeHtml(item.status)}</span>
-            </div>
-            \${item.pairingCode ? \`<div class="code">\${escapeHtml(item.pairingCode)}</div>\` : ""}
-            \${item.error ? \`<div class="note">Error: \${escapeHtml(item.error)}</div>\` : ""}
-            <div class="note">Actualizado: \${new Date(item.updatedAt).toLocaleString()}</div>
-            <div class="actions" style="margin-top: 12px;">
-              <button class="secondary" data-stop="\${escapeHtml(item.phone)}">Apagar subbot</button>
-            </div>
-          </div>
-        \`).join("");
-
-        document.querySelectorAll("[data-stop]").forEach((button) => {
-          button.addEventListener("click", async () => {
-            const phone = button.getAttribute("data-stop");
-            button.disabled = true;
-            outputEl.textContent = "Apagando subbot...";
-            try {
-              const json = await api("/api/subbot/stop", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ phone })
-              });
-              outputEl.textContent = json.message;
-              await refreshStatus();
-            } catch (error) {
-              outputEl.textContent = "Error: " + error.message;
-            } finally {
-              button.disabled = false;
-            }
-          });
-        });
-      }
-
       async function refreshStatus() {
         const data = await api("/api/status");
         renderCards(data);
-        renderSubbots(data.subbots || []);
       }
 
       startBtn.addEventListener("click", async () => {
@@ -497,7 +412,7 @@ export function startWebServer({ port, host, getBotContext }) {
         return sendJson(res, 200, {
           ...state,
           uptime: formatUptime(state.startedAt),
-          subbots: listSubbots()
+          subbots: listPublicSubbots()
         });
       }
 
@@ -527,15 +442,6 @@ export function startWebServer({ port, host, getBotContext }) {
           ok: true,
           phone: result.phone,
           pairingCode: result.pairingCode
-        });
-      }
-
-      if (req.method === "POST" && url.pathname === "/api/subbot/stop") {
-        const body = await readBody(req);
-        await stopSubbot(body.phone || "");
-        return sendJson(res, 200, {
-          ok: true,
-          message: "Subbot apagado correctamente."
         });
       }
 
