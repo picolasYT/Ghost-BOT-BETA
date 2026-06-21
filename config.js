@@ -2,6 +2,7 @@ export default {
   prefix: process.env.PREFIX || "!",
   botName: process.env.BOT_NAME || "Ghost-Bot",
   ownerName: process.env.OWNER_NAME || "Picolas",
+  ownerNumber: process.env.OWNER_NUMBER || process.env.PHONE_NUMBER || "",
   provider: process.env.PROVIDER || "baileys",
   authPath: process.env.AUTH_PATH || "./data/auth",
   chromePath:

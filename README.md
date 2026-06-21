@@ -38,6 +38,7 @@ npm start
 PREFIX=!
 BOT_NAME=Ghost-Bot
 OWNER_NAME=Picolas
+OWNER_NUMBER=
 LOGIN_METHOD=qr
 PHONE_NUMBER=
 AUTH_PATH=./data/auth
@@ -94,6 +95,17 @@ Si Chromium cambia de ruta en tu instalacion, ajusta `CHROME_PATH`.
 - `!estado`: muestra provider, plataforma, ruta de auth y datos del runtime.
 - `!uptime`: muestra cuanto lleva encendido el bot.
 - `!reload`: recarga plugins sin reiniciar el proceso. Solo responde desde la cuenta del owner.
+- `!sug <texto>`: envia una sugerencia o reporte al owner del bot.
+
+## Sugerencias al owner
+
+Si queres recibir sugerencias de usuarios en privado, configura:
+
+```env
+OWNER_NUMBER=54911XXXXXXXX
+```
+
+Usa el numero con codigo de pais y sin `+`, espacios ni guiones.
 
 ## Nota sobre compatibilidad
 

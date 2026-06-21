@@ -113,7 +113,7 @@ export default {
         return await message.reply("⚠️ Ese número ya tiene un subbot iniciado.")
       }
 
-      const { Client, LocalAuth } = await loadWhatsappWeb()
+      const { Client, LocalAuth, MessageMedia: SubbotMessageMedia } = await loadWhatsappWeb()
       const clientId = getSubbotClientId(phone)
 
       const subClient = new Client({
@@ -122,11 +122,16 @@ export default {
           dataPath: config.authPath || "./data/auth"
         }),
         puppeteer: {
-          headless: true,
+          headless: config.headless !== false,
+          ...(config.chromePath ? { executablePath: config.chromePath } : {}),
           args: [
-            "--no-sandbox",
-            "--disable-setuid-sandbox",
-            "--disable-dev-shm-usage"
+            "--disable-dev-shm-usage",
+            "--disable-gpu",
+            "--no-first-run",
+            "--no-default-browser-check",
+            ...(config.disableSandbox !== "false"
+              ? ["--no-sandbox", "--disable-setuid-sandbox"]
+              : [])
           ]
         }
       })
@@ -146,7 +151,7 @@ export default {
         subClient,
         mainClient: client,
         config,
-        MessageMedia,
+        MessageMedia: SubbotMessageMedia,
         fs,
         path,
         cacheDir
@@ -162,7 +167,23 @@ export default {
 
       subClient.on("disconnected", async reason => {
         subbots.delete(phone)
-        await client.sendMessage(message.from, `⚠️ Subbot desconectado: ${reason}`)
+        try {
+          await client.sendMessage(message.from, `⚠️ Subbot desconectado: ${reason}`)
+        } catch {}
+      })
+
+      subClient.on("auth_failure", async reason => {
+        subbots.delete(phone)
+        try {
+          await client.sendMessage(
+            message.from,
+            `❌ Fallo la autenticacion del subbot: ${reason || "sin detalle"}`
+          )
+        } catch {}
+      })
+
+      subClient.on("change_state", state => {
+        console.log(`ℹ️ Estado subbot ${phone}: ${state}`)
       })
 
       subClient.initialize()

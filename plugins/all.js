@@ -1,3 +1,11 @@
+function normalizeJid(jid = "") {
+  if (!jid || !jid.includes("@")) return jid
+
+  const [left, domain] = jid.split("@")
+  const user = left.split(":")[0]
+  return `${user}@${domain}`
+}
+
 export default {
   name: "all",
   aliases: ["todos", "tagall"],
@@ -12,8 +20,10 @@ export default {
         return await message.reply("❌ Este comando solo funciona en grupos.")
       }
 
-      const senderId = message.author || message.from
-      const sender = chat.participants.find(p => p.id._serialized === senderId)
+      const senderId = normalizeJid(message.author || message.from)
+      const sender = chat.participants.find(
+        p => normalizeJid(p.id._serialized) === senderId
+      )
 
       if (!sender?.isAdmin) {
         return await message.reply("🔒 Solo admins pueden usar este comando.")
