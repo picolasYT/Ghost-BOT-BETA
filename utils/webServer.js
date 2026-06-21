@@ -1,22 +1,93 @@
+import crypto from "crypto";
 import http from "http";
 import { getAppState, patchWebState } from "./appState.js";
 import { listSubbots, startSubbot, stopSubbot } from "./subbotManager.js";
 
-function sendJson(res, statusCode, payload) {
+const sessionStore = global.ghostBotAdminSessions || (global.ghostBotAdminSessions = new Map());
+
+const adminIdeas = [
+  "Estado en vivo del bot",
+  "Uptime del proceso",
+  "Cantidad de comandos cargados",
+  "Lista de subbots activos",
+  "Generar codigo de emparejamiento",
+  "Apagar subbots desde web",
+  "Ver errores recientes del panel",
+  "Historial de sugerencias",
+  "Atajos para update y reload",
+  "Estado del provider",
+  "Ruta de auth activa",
+  "Datos del owner configurado",
+  "Monitor de reconexiones",
+  "Panel de moderacion",
+  "Logs basicos del bot",
+  "Accesos protegidos por login",
+  "Healthcheck para Render",
+  "Resumen de sesiones creadas",
+  "API privada para automatizaciones",
+  "Base para futuras funciones admin"
+];
+
+function sendJson(res, statusCode, payload, extraHeaders = {}) {
   const body = JSON.stringify(payload);
   res.writeHead(statusCode, {
     "Content-Type": "application/json; charset=utf-8",
-    "Cache-Control": "no-store"
+    "Cache-Control": "no-store",
+    ...extraHeaders
   });
   res.end(body);
 }
 
-function sendHtml(res, html) {
-  res.writeHead(200, {
+function sendHtml(res, html, statusCode = 200, extraHeaders = {}) {
+  res.writeHead(statusCode, {
     "Content-Type": "text/html; charset=utf-8",
-    "Cache-Control": "no-store"
+    "Cache-Control": "no-store",
+    ...extraHeaders
   });
   res.end(html);
+}
+
+function parseCookies(req) {
+  const raw = req.headers.cookie || "";
+  const pairs = raw.split(";").map((part) => part.trim()).filter(Boolean);
+  const cookies = {};
+
+  for (const pair of pairs) {
+    const index = pair.indexOf("=");
+    if (index === -1) continue;
+    const key = pair.slice(0, index);
+    const value = pair.slice(index + 1);
+    cookies[key] = decodeURIComponent(value);
+  }
+
+  return cookies;
+}
+
+function createSession() {
+  const token = crypto.randomBytes(24).toString("hex");
+  sessionStore.set(token, {
+    createdAt: Date.now()
+  });
+  return token;
+}
+
+function isAuthenticated(req) {
+  const cookies = parseCookies(req);
+  const token = cookies.ghost_admin_session || "";
+  return Boolean(token && sessionStore.has(token));
+}
+
+function requireAuth(req, res) {
+  if (isAuthenticated(req)) return true;
+  sendJson(res, 401, { error: "No autenticado." });
+  return false;
+}
+
+function clearSession(req, res) {
+  const cookies = parseCookies(req);
+  const token = cookies.ghost_admin_session || "";
+  if (token) sessionStore.delete(token);
+  res.setHeader("Set-Cookie", "ghost_admin_session=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax");
 }
 
 function readBody(req) {
@@ -53,7 +124,132 @@ function formatUptime(startedAt) {
   return `${h}h ${m}m ${s}s`;
 }
 
-function renderPage() {
+function renderLoginPage() {
+  return `<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ghost Bot Admin</title>
+    <style>
+      :root {
+        --bg: #08101d;
+        --card: rgba(11, 19, 34, 0.92);
+        --line: rgba(148, 163, 184, 0.16);
+        --text: #e8f1ff;
+        --muted: #95a7c7;
+        --accent: #41d6c3;
+        --accent2: #7dd3fc;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        color: var(--text);
+        background:
+          radial-gradient(circle at top left, rgba(65, 214, 195, 0.18), transparent 28%),
+          radial-gradient(circle at bottom right, rgba(125, 211, 252, 0.16), transparent 26%),
+          linear-gradient(160deg, #06101d 0%, #0a1220 46%, #111827 100%);
+      }
+      .box {
+        width: min(460px, calc(100vw - 24px));
+        padding: 28px;
+        border-radius: 28px;
+        background: var(--card);
+        border: 1px solid var(--line);
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.35);
+      }
+      h1 {
+        margin: 0 0 10px;
+        font-size: clamp(2rem, 8vw, 3rem);
+        line-height: 0.95;
+      }
+      p {
+        color: var(--muted);
+        margin: 0 0 20px;
+      }
+      label {
+        display: grid;
+        gap: 8px;
+        margin-bottom: 14px;
+        font-weight: 600;
+      }
+      input {
+        padding: 14px 16px;
+        border-radius: 16px;
+        border: 1px solid var(--line);
+        background: rgba(7, 13, 24, 0.88);
+        color: var(--text);
+      }
+      button {
+        width: 100%;
+        padding: 14px 18px;
+        border: 0;
+        border-radius: 16px;
+        font-weight: 800;
+        color: #071017;
+        cursor: pointer;
+        background: linear-gradient(135deg, var(--accent), var(--accent2));
+      }
+      #msg {
+        margin-top: 14px;
+        min-height: 22px;
+        color: #ffb4b4;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="box">
+      <h1>Ghost Bot Admin</h1>
+      <p>Ingresá con tu usuario y contraseña para abrir el panel de control.</p>
+      <label>Usuario<input id="user" autocomplete="username" /></label>
+      <label>Contraseña<input id="pass" type="password" autocomplete="current-password" /></label>
+      <button id="loginBtn">Entrar al panel</button>
+      <div id="msg"></div>
+    </main>
+    <script>
+      async function safeJson(res) {
+        const text = await res.text();
+        if (!text) return {};
+        try {
+          return JSON.parse(text);
+        } catch {
+          throw new Error(text);
+        }
+      }
+
+      document.getElementById("loginBtn").addEventListener("click", async () => {
+        const user = document.getElementById("user").value.trim();
+        const pass = document.getElementById("pass").value;
+        const msg = document.getElementById("msg");
+        msg.textContent = "Verificando...";
+
+        try {
+          const res = await fetch("/api/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ user, pass })
+          });
+          const json = await safeJson(res);
+          if (!res.ok) throw new Error(json.error || "No se pudo iniciar sesion.");
+          window.location.reload();
+        } catch (error) {
+          msg.textContent = error.message;
+        }
+      });
+    </script>
+  </body>
+</html>`;
+}
+
+function renderDashboard() {
+  const ideasMarkup = adminIdeas
+    .map((idea, index) => `<div class="idea"><span>${index + 1}.</span> ${idea}</div>`)
+    .join("");
+
   return `<!doctype html>
 <html lang="es">
   <head>
@@ -63,23 +259,15 @@ function renderPage() {
     <style>
       :root {
         --bg: #0c111b;
-        --bg-soft: #111827;
         --panel: rgba(14, 23, 40, 0.78);
-        --panel-strong: rgba(10, 17, 31, 0.92);
         --line: rgba(148, 163, 184, 0.2);
         --text: #e5eefc;
         --muted: #9db0cc;
         --accent: #2dd4bf;
-        --accent-2: #60a5fa;
+        --accent2: #60a5fa;
         --danger: #f87171;
-        --warning: #fbbf24;
-        --shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
       }
-
-      * {
-        box-sizing: border-box;
-      }
-
+      * { box-sizing: border-box; }
       body {
         margin: 0;
         min-height: 100vh;
@@ -90,7 +278,6 @@ function renderPage() {
           radial-gradient(circle at top right, rgba(96, 165, 250, 0.18), transparent 25%),
           linear-gradient(160deg, #08101d 0%, #0b1220 46%, #111827 100%);
       }
-
       body::before {
         content: "";
         position: fixed;
@@ -102,189 +289,84 @@ function renderPage() {
         mask-image: radial-gradient(circle at center, black, transparent 80%);
         pointer-events: none;
       }
-
-      .shell {
-        width: min(1180px, calc(100vw - 32px));
-        margin: 24px auto;
-        position: relative;
-        z-index: 1;
-      }
-
-      .hero {
-        padding: 28px;
+      .shell { width: min(1240px, calc(100vw - 28px)); margin: 18px auto; position: relative; z-index: 1; }
+      .hero, .panel {
         border: 1px solid var(--line);
         border-radius: 28px;
-        background: linear-gradient(180deg, rgba(17, 24, 39, 0.85), rgba(8, 16, 29, 0.85));
-        box-shadow: var(--shadow);
-        overflow: hidden;
-        position: relative;
+        background: var(--panel);
+        box-shadow: 0 24px 60px rgba(0,0,0,.28);
+        backdrop-filter: blur(18px);
       }
-
-      .hero::after {
-        content: "";
-        position: absolute;
-        inset: auto -80px -80px auto;
-        width: 240px;
-        height: 240px;
-        border-radius: 999px;
-        background: radial-gradient(circle, rgba(45, 212, 191, 0.4), transparent 68%);
-        filter: blur(10px);
-      }
-
+      .hero { padding: 26px; }
+      .topbar { display: flex; justify-content: space-between; gap: 16px; align-items: center; flex-wrap: wrap; }
       .eyebrow {
         display: inline-flex;
         gap: 8px;
         align-items: center;
         padding: 8px 12px;
         border-radius: 999px;
-        border: 1px solid rgba(45, 212, 191, 0.22);
+        border: 1px solid rgba(45, 212, 191, 0.24);
         background: rgba(45, 212, 191, 0.08);
         color: #b8fff6;
-        font-size: 0.85rem;
+        font-size: .85rem;
       }
-
-      h1 {
-        margin: 18px 0 10px;
-        font-size: clamp(2.4rem, 8vw, 4.6rem);
-        line-height: 0.95;
-        max-width: 10ch;
-      }
-
-      .lead {
-        max-width: 62ch;
-        color: var(--muted);
-        font-size: 1.05rem;
-      }
-
-      .grid {
-        display: grid;
-        grid-template-columns: 1.2fr 0.8fr;
-        gap: 20px;
-        margin-top: 20px;
-      }
-
-      .panel {
-        border: 1px solid var(--line);
-        border-radius: 24px;
-        background: var(--panel);
-        box-shadow: var(--shadow);
-        backdrop-filter: blur(18px);
-      }
-
-      .panel-body {
-        padding: 22px;
-      }
-
-      .cards {
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 14px;
-        margin-top: 20px;
-      }
-
-      .card {
-        padding: 18px;
-        border-radius: 20px;
-        background: rgba(15, 23, 42, 0.7);
-        border: 1px solid rgba(148, 163, 184, 0.12);
-      }
-
-      .kicker {
-        color: var(--muted);
-        font-size: 0.82rem;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-      }
-
-      .metric {
-        margin-top: 8px;
-        font-size: 1.55rem;
-        font-weight: 700;
-      }
-
-      .form-title,
-      .section-title {
-        margin: 0 0 8px;
-        font-size: 1.3rem;
-      }
-
-      .section-copy {
-        margin: 0;
-        color: var(--muted);
-      }
-
-      .stack {
-        display: grid;
-        gap: 16px;
-      }
-
-      label {
-        display: grid;
-        gap: 8px;
-        color: #d7e6ff;
-        font-weight: 600;
-      }
-
+      h1 { margin: 16px 0 10px; font-size: clamp(2.4rem, 7vw, 4.8rem); line-height: .94; max-width: 11ch; }
+      .lead { max-width: 64ch; color: var(--muted); }
+      .cards, .ideas { display: grid; gap: 14px; }
+      .cards { grid-template-columns: repeat(5, 1fr); margin-top: 20px; }
+      .card, .idea { padding: 18px; border-radius: 20px; background: rgba(15,23,42,.72); border: 1px solid rgba(148,163,184,.12); }
+      .idea span { color: var(--accent); font-weight: 800; margin-right: 8px; }
+      .kicker { color: var(--muted); font-size: .82rem; text-transform: uppercase; letter-spacing: .08em; }
+      .metric { margin-top: 8px; font-size: 1.45rem; font-weight: 700; }
+      .grid { display: grid; grid-template-columns: 1.15fr .85fr; gap: 18px; margin-top: 18px; }
+      .panel-body { padding: 22px; }
+      .stack { display: grid; gap: 16px; }
+      label { display: grid; gap: 8px; font-weight: 600; }
       input {
         width: 100%;
         padding: 14px 16px;
         border-radius: 16px;
-        border: 1px solid rgba(148, 163, 184, 0.2);
-        background: rgba(7, 13, 24, 0.85);
+        border: 1px solid rgba(148,163,184,.2);
+        background: rgba(7,13,24,.88);
         color: var(--text);
-        outline: none;
       }
-
-      input:focus {
-        border-color: rgba(45, 212, 191, 0.7);
-        box-shadow: 0 0 0 4px rgba(45, 212, 191, 0.12);
-      }
-
-      .actions {
-        display: flex;
-        gap: 12px;
-        flex-wrap: wrap;
-      }
-
+      .actions { display: flex; gap: 12px; flex-wrap: wrap; }
       button {
         border: 0;
         border-radius: 16px;
         padding: 14px 18px;
-        font-weight: 700;
+        font-weight: 800;
         cursor: pointer;
-        transition: transform 0.18s ease, opacity 0.18s ease;
       }
-
-      button:hover {
-        transform: translateY(-1px);
-      }
-
-      button:disabled {
-        opacity: 0.55;
-        cursor: not-allowed;
-      }
-
-      .primary {
-        color: #061017;
-        background: linear-gradient(135deg, var(--accent), #7dd3fc);
-      }
-
-      .secondary {
-        color: var(--text);
-        background: rgba(17, 24, 39, 0.9);
-        border: 1px solid rgba(148, 163, 184, 0.18);
-      }
-
+      .primary { color: #071017; background: linear-gradient(135deg, var(--accent), #7dd3fc); }
+      .secondary { color: var(--text); background: rgba(17,24,39,.9); border: 1px solid rgba(148,163,184,.18); }
+      .danger { color: #fff; background: rgba(248,113,113,.16); border: 1px solid rgba(248,113,113,.28); }
       .output {
-        min-height: 152px;
+        min-height: 180px;
         padding: 18px;
         border-radius: 18px;
-        background: rgba(6, 10, 18, 0.92);
-        border: 1px solid rgba(148, 163, 184, 0.12);
+        background: rgba(6,10,18,.92);
+        border: 1px solid rgba(148,163,184,.12);
         font-family: Consolas, "Courier New", monospace;
         white-space: pre-wrap;
       }
-
+      .subbot-list, .ideas { grid-template-columns: 1fr; }
+      .subbot {
+        padding: 16px;
+        border-radius: 18px;
+        border: 1px solid rgba(148,163,184,.14);
+        background: rgba(9,15,27,.82);
+      }
+      .subbot-top { display: flex; justify-content: space-between; gap: 10px; align-items: center; }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid rgba(148,163,184,.16);
+        background: rgba(17,24,39,.85);
+        font-size: .82rem;
+      }
       .code {
         display: inline-block;
         margin-top: 12px;
@@ -293,129 +375,70 @@ function renderPage() {
         background: rgba(45, 212, 191, 0.12);
         border: 1px solid rgba(45, 212, 191, 0.25);
         color: #b8fff6;
-        font-size: 1.7rem;
-        letter-spacing: 0.15em;
+        font-size: 1.6rem;
+        letter-spacing: .15em;
         font-weight: 800;
       }
-
-      .list {
-        display: grid;
-        gap: 12px;
+      .note { margin-top: 12px; color: var(--muted); font-size: .92rem; }
+      @media (max-width: 1100px) {
+        .cards { grid-template-columns: repeat(3, 1fr); }
+        .grid { grid-template-columns: 1fr; }
       }
-
-      .subbot {
-        padding: 16px;
-        border-radius: 18px;
-        border: 1px solid rgba(148, 163, 184, 0.14);
-        background: rgba(9, 15, 27, 0.82);
-      }
-
-      .subbot-top {
-        display: flex;
-        justify-content: space-between;
-        gap: 12px;
-        align-items: center;
-      }
-
-      .badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        padding: 6px 10px;
-        border-radius: 999px;
-        font-size: 0.82rem;
-        border: 1px solid rgba(148, 163, 184, 0.16);
-        background: rgba(17, 24, 39, 0.85);
-      }
-
-      .footer-note {
-        margin-top: 12px;
-        color: var(--muted);
-        font-size: 0.92rem;
-      }
-
-      @media (max-width: 980px) {
-        .grid {
-          grid-template-columns: 1fr;
-        }
-
-        .cards {
-          grid-template-columns: repeat(2, 1fr);
-        }
-      }
-
       @media (max-width: 640px) {
-        .shell {
-          width: min(100vw - 20px, 1180px);
-          margin: 10px auto 18px;
-        }
-
-        .hero,
-        .panel-body {
-          padding: 18px;
-        }
-
-        .cards {
-          grid-template-columns: 1fr;
-        }
-
-        .actions {
-          flex-direction: column;
-        }
-
-        button {
-          width: 100%;
-        }
+        .shell { width: min(100vw - 16px, 1240px); margin: 8px auto 18px; }
+        .hero, .panel-body { padding: 18px; }
+        .cards { grid-template-columns: 1fr 1fr; }
+        .actions { flex-direction: column; }
+        button { width: 100%; }
       }
     </style>
   </head>
   <body>
     <div class="shell">
       <section class="hero">
-        <div class="eyebrow">Ghost Bot Panel • Render Ready</div>
-        <h1>Conectá subbots desde la web.</h1>
-        <p class="lead">
-          Pedí el código de emparejamiento, mirá el estado del bot y administrá sesiones sin depender del chat.
-        </p>
+        <div class="topbar">
+          <div class="eyebrow">Ghost Bot Admin • Panel protegido</div>
+          <button class="danger" id="logoutBtn">Cerrar sesión</button>
+        </div>
+        <h1>Panel de control del bot.</h1>
+        <p class="lead">Estado en vivo, emparejamiento de subbots y base para un panel admin más grande sin depender del chat.</p>
         <div class="cards" id="cards"></div>
       </section>
-
       <section class="grid">
         <article class="panel">
           <div class="panel-body stack">
             <div>
-              <h2 class="form-title">Crear subbot</h2>
-              <p class="section-copy">
-                Ingresá un número con código de país. El panel va a generar el código de emparejamiento para vincularlo desde WhatsApp.
-              </p>
+              <h2>Crear subbot</h2>
+              <p class="lead">Generá el código de emparejamiento desde la web. Si el backend falla, ahora el panel muestra el texto real del error en vez de romper con JSON vacío.</p>
             </div>
-
-            <label>
-              Número de WhatsApp
-              <input id="phone" placeholder="549112345678" autocomplete="off" />
-            </label>
-
+            <label>Número de WhatsApp<input id="phone" placeholder="549112345678" autocomplete="off" /></label>
             <div class="actions">
               <button class="primary" id="startBtn">Generar código</button>
               <button class="secondary" id="refreshBtn">Actualizar panel</button>
             </div>
-
             <div class="output" id="output">Esperando acción...</div>
           </div>
         </article>
-
         <article class="panel">
           <div class="panel-body stack">
             <div>
-              <h2 class="section-title">Subbots activos</h2>
-              <p class="section-copy">Las sesiones generadas desde WhatsApp y desde la web aparecen acá.</p>
+              <h2>Subbots activos</h2>
+              <p class="lead">Sesiones creadas desde WhatsApp y desde la web.</p>
             </div>
-            <div class="list" id="subbots"></div>
+            <div class="subbot-list" id="subbots"></div>
           </div>
         </article>
       </section>
+      <section class="panel" style="margin-top: 18px;">
+        <div class="panel-body stack">
+          <div>
+            <h2>20 funciones para seguir creciendo</h2>
+            <p class="lead">Esto ya te deja una hoja de ruta concreta para convertirlo en un panel admin más completo.</p>
+          </div>
+          <div class="ideas">${ideasMarkup}</div>
+        </div>
+      </section>
     </div>
-
     <script>
       const cardsEl = document.getElementById("cards");
       const subbotsEl = document.getElementById("subbots");
@@ -423,6 +446,7 @@ function renderPage() {
       const startBtn = document.getElementById("startBtn");
       const refreshBtn = document.getElementById("refreshBtn");
       const phoneEl = document.getElementById("phone");
+      const logoutBtn = document.getElementById("logoutBtn");
 
       function escapeHtml(text) {
         return String(text)
@@ -433,22 +457,42 @@ function renderPage() {
           .replace(/'/g, "&#39;");
       }
 
+      async function safeJson(res) {
+        const text = await res.text();
+        if (!text) {
+          return { error: "El servidor devolvió una respuesta vacía." };
+        }
+        try {
+          return JSON.parse(text);
+        } catch {
+          return { error: text };
+        }
+      }
+
+      async function api(path, options = {}) {
+        const res = await fetch(path, options);
+        const json = await safeJson(res);
+        if (!res.ok) {
+          throw new Error(json.error || "Solicitud fallida.");
+        }
+        return json;
+      }
+
       function renderCards(state) {
         const items = [
           ["Bot", state.bot.botName || "Ghost-Bot"],
           ["Estado", state.bot.status || "starting"],
           ["Comandos", String(state.bot.commands || 0)],
-          ["Uptime", state.uptime || "0h 0m 0s"]
+          ["Uptime", state.uptime || "0h 0m 0s"],
+          ["Subbots", String((state.subbots || []).length)]
         ];
 
-        cardsEl.innerHTML = items
-          .map(([label, value]) => \`
-            <div class="card">
-              <div class="kicker">\${escapeHtml(label)}</div>
-              <div class="metric">\${escapeHtml(value)}</div>
-            </div>
-          \`)
-          .join("");
+        cardsEl.innerHTML = items.map(([label, value]) => \`
+          <div class="card">
+            <div class="kicker">\${escapeHtml(label)}</div>
+            <div class="metric">\${escapeHtml(value)}</div>
+          </div>
+        \`).join("");
       }
 
       function renderSubbots(items) {
@@ -457,22 +501,20 @@ function renderPage() {
           return;
         }
 
-        subbotsEl.innerHTML = items
-          .map((item) => \`
-            <div class="subbot">
-              <div class="subbot-top">
-                <strong>\${escapeHtml(item.phone)}</strong>
-                <span class="badge">\${escapeHtml(item.status)}</span>
-              </div>
-              \${item.pairingCode ? \`<div class="code">\${escapeHtml(item.pairingCode)}</div>\` : ""}
-              \${item.error ? \`<div class="footer-note">Error: \${escapeHtml(item.error)}</div>\` : ""}
-              <div class="footer-note">Actualizado: \${new Date(item.updatedAt).toLocaleString()}</div>
-              <div class="actions" style="margin-top: 12px;">
-                <button class="secondary" data-stop="\${escapeHtml(item.phone)}">Apagar subbot</button>
-              </div>
+        subbotsEl.innerHTML = items.map((item) => \`
+          <div class="subbot">
+            <div class="subbot-top">
+              <strong>\${escapeHtml(item.phone)}</strong>
+              <span class="badge">\${escapeHtml(item.status)}</span>
             </div>
-          \`)
-          .join("");
+            \${item.pairingCode ? \`<div class="code">\${escapeHtml(item.pairingCode)}</div>\` : ""}
+            \${item.error ? \`<div class="note">Error: \${escapeHtml(item.error)}</div>\` : ""}
+            <div class="note">Actualizado: \${new Date(item.updatedAt).toLocaleString()}</div>
+            <div class="actions" style="margin-top: 12px;">
+              <button class="secondary" data-stop="\${escapeHtml(item.phone)}">Apagar subbot</button>
+            </div>
+          </div>
+        \`).join("");
 
         document.querySelectorAll("[data-stop]").forEach((button) => {
           button.addEventListener("click", async () => {
@@ -480,13 +522,11 @@ function renderPage() {
             button.disabled = true;
             outputEl.textContent = "Apagando subbot...";
             try {
-              const res = await fetch("/api/subbot/stop", {
+              const json = await api("/api/subbot/stop", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ phone })
               });
-              const json = await res.json();
-              if (!res.ok) throw new Error(json.error || "No se pudo apagar.");
               outputEl.textContent = json.message;
               await refreshStatus();
             } catch (error) {
@@ -499,8 +539,7 @@ function renderPage() {
       }
 
       async function refreshStatus() {
-        const res = await fetch("/api/status");
-        const data = await res.json();
+        const data = await api("/api/status");
         renderCards(data);
         renderSubbots(data.subbots || []);
       }
@@ -516,15 +555,13 @@ function renderPage() {
         outputEl.textContent = "Generando subbot y esperando código de emparejamiento...";
 
         try {
-          const res = await fetch("/api/subbot/start", {
+          const json = await api("/api/subbot/start", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ phone })
           });
-          const json = await res.json();
-          if (!res.ok) throw new Error(json.error || "No se pudo generar el código.");
 
-          outputEl.innerHTML =
+          outputEl.textContent =
             "Subbot creado correctamente.\\n\\n" +
             "Número: " + json.phone + "\\n\\n" +
             "Código:\\n" +
@@ -540,20 +577,64 @@ function renderPage() {
       });
 
       refreshBtn.addEventListener("click", refreshStatus);
-      refreshStatus();
-      setInterval(refreshStatus, 12000);
+      logoutBtn.addEventListener("click", async () => {
+        try {
+          await api("/api/logout", { method: "POST" });
+        } catch {}
+        window.location.reload();
+      });
+
+      refreshStatus().catch((error) => {
+        outputEl.textContent = "Error inicial: " + error.message;
+      });
+      setInterval(() => {
+        refreshStatus().catch(() => {});
+      }, 12000);
     </script>
   </body>
 </html>`;
 }
 
-export function startWebServer({ port, host, getBotContext }) {
+export function startWebServer({ port, host, getBotContext, config }) {
   const server = http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
 
       if (req.method === "GET" && url.pathname === "/") {
-        return sendHtml(res, renderPage());
+        if (!isAuthenticated(req)) {
+          return sendHtml(res, renderLoginPage());
+        }
+        return sendHtml(res, renderDashboard());
+      }
+
+      if (req.method === "POST" && url.pathname === "/api/login") {
+        const body = await readBody(req);
+        if (body.user !== config.adminUser || body.pass !== config.adminPass) {
+          return sendJson(res, 401, { error: "Credenciales inválidas." });
+        }
+
+        const token = createSession();
+        return sendJson(
+          res,
+          200,
+          { ok: true },
+          {
+            "Set-Cookie": `ghost_admin_session=${token}; HttpOnly; Path=/; Max-Age=${60 * 60 * 12}; SameSite=Lax`
+          }
+        );
+      }
+
+      if (req.method === "POST" && url.pathname === "/api/logout") {
+        clearSession(req, res);
+        return sendJson(res, 200, { ok: true });
+      }
+
+      if (req.method === "GET" && url.pathname === "/health") {
+        return sendJson(res, 200, { ok: true });
+      }
+
+      if (url.pathname.startsWith("/api/") && !requireAuth(req, res)) {
+        return;
       }
 
       if (req.method === "GET" && url.pathname === "/api/status") {
@@ -561,7 +642,8 @@ export function startWebServer({ port, host, getBotContext }) {
         return sendJson(res, 200, {
           ...state,
           uptime: formatUptime(state.startedAt),
-          subbots: listSubbots()
+          subbots: listSubbots(),
+          adminIdeas
         });
       }
 
@@ -601,10 +683,6 @@ export function startWebServer({ port, host, getBotContext }) {
           ok: true,
           message: "Subbot apagado correctamente."
         });
-      }
-
-      if (req.method === "GET" && url.pathname === "/health") {
-        return sendJson(res, 200, { ok: true });
       }
 
       sendJson(res, 404, { error: "Ruta no encontrada." });

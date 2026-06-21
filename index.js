@@ -35,7 +35,8 @@ try {
   startWebServer({
     port: WEB_PORT,
     host: WEB_HOST,
-    getBotContext: () => latestBotContext
+    getBotContext: () => latestBotContext,
+    config
   });
   logSuccess(`Panel web iniciado en http://localhost:${WEB_PORT}`);
 } catch (error) {
