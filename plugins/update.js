@@ -13,11 +13,20 @@ function trimOutput(text = "", maxLength = 1200) {
   return `${normalized.slice(0, maxLength)}...`;
 }
 
-async function runGit(args) {
-  return await execFileAsync("git", args, {
+async function runCommand(command, args) {
+  return await execFileAsync(command, args, {
     cwd: repoRoot,
     windowsHide: true
   });
+}
+
+async function runGit(args) {
+  return await runCommand("git", args);
+}
+
+async function runNpmInstall() {
+  const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm";
+  return await runCommand(npmCmd, ["install"]);
 }
 
 async function detectBranch() {
@@ -46,51 +55,42 @@ async function detectRemoteUrl(fallbackRepoUrl) {
   return fallbackRepoUrl;
 }
 
-async function hasLocalChanges() {
-  const { stdout } = await runGit(["status", "--porcelain"]);
-  return Boolean(stdout.trim());
-}
-
 export default {
   name: "update",
   aliases: ["actualizar", "gitpull"],
   category: "system",
-  description: "Actualiza el bot haciendo git pull. Solo owner.",
+  description: "Actualiza el bot, instala cambios y reinicia. Solo owner.",
 
-  async execute({ message, config, reloadCommands }) {
+  async execute({ message, config }) {
     if (!message.fromMe) {
       return await message.reply("Solo el owner puede actualizar el bot desde su propia cuenta.");
     }
 
-    await message.reply("⏳ Buscando actualizaciones del bot...");
+    await message.reply("⏳ Actualizando bot, instalando cambios y preparando reinicio...");
 
     try {
-      if (await hasLocalChanges()) {
-        return await message.reply(
-          "⚠️ No hice update porque hay cambios locales sin subir en el servidor. Hacé commit o limpiá esos cambios primero."
-        );
-      }
-
       const branch = await detectBranch();
       const remoteUrl = await detectRemoteUrl(config.repoUrl);
 
-      await runGit(["fetch", remoteUrl, branch]);
-      const result = await runGit(["pull", "--ff-only", remoteUrl, branch]);
+      const fetchResult = await runGit(["fetch", remoteUrl, branch]);
+      await runGit(["reset", "--hard", "FETCH_HEAD"]);
+      const installResult = await runNpmInstall();
 
-      const output = trimOutput([result.stdout, result.stderr].filter(Boolean).join("\n"));
-      const updated = !/already up to date/i.test(output);
-
-      let reloadText = "";
-      if (updated && typeof reloadCommands === "function") {
-        const total = await reloadCommands();
-        reloadText = `\n\nPlugins recargados: ${total}`;
-      }
+      const output = trimOutput(
+        [fetchResult.stdout, fetchResult.stderr, installResult.stdout, installResult.stderr]
+          .filter(Boolean)
+          .join("\n")
+      );
 
       await message.reply(
         output
-          ? `✅ Update completado.\n\n${output}${reloadText}`
-          : `✅ Update completado.${reloadText}`
+          ? `✅ Update completado.\n\n${output}\n\n♻️ Reiniciando bot...`
+          : "✅ Update completado.\n\n♻️ Reiniciando bot..."
       );
+
+      setTimeout(() => {
+        process.exit(0);
+      }, 1500);
     } catch (error) {
       const stdout = trimOutput(error?.stdout || "");
       const stderr = trimOutput(error?.stderr || "");
