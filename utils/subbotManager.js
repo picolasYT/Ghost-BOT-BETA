@@ -144,6 +144,17 @@ function attachSubbotLifecycle({ sock, entry, mainClient, ownerChat, notifyOwner
         return;
       }
 
+       if (
+        reasonText === "408" &&
+        ["starting", "registered", "pairing_code_ready", "reconnecting"].includes(entry.status)
+      ) {
+        touchEntry(entry, {
+          status: entry.status === "pairing_code_ready" ? "pairing_code_ready" : "reconnecting",
+          error: ""
+        });
+        return;
+      }
+
       touchEntry(entry, {
         status: "disconnected",
         error: reasonText
