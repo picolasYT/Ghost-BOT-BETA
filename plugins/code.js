@@ -17,6 +17,29 @@ function getSubbotClientId(phone) {
   return `ghost-subbot-${phone}`
 }
 
+function formatInitError(error, config) {
+  const message = String(error?.message || error || "No se pudo iniciar el subbot.")
+
+  if (message.includes("Could not find Chrome")) {
+    const currentPath = config.chromePath || "sin definir"
+    return (
+      "No se pudo iniciar el subbot porque Chrome/Chromium no esta disponible en este entorno.\n" +
+      `CHROME_PATH actual: ${currentPath}\n\n` +
+      "En Render tenes que instalar Chrome/Chromium o definir CHROME_PATH a un ejecutable valido."
+    )
+  }
+
+  return message
+}
+
+async function cleanupFailedSubbot(subClient, phone) {
+  try {
+    await subClient.destroy()
+  } catch {}
+
+  subbots.delete(phone)
+}
+
 async function startCommandHandler({ subClient, mainClient, config, MessageMedia, fs, path, cacheDir }) {
   subClient.commands = mainClient.commands
 
@@ -47,10 +70,10 @@ async function startCommandHandler({ subClient, mainClient, config, MessageMedia
         cacheDir,
         reply: (content, options) => message.reply(content, undefined, options)
       })
-    } catch (e) {
-      console.error("❌ Error en subbot:", e)
+    } catch (error) {
+      console.error("Error en subbot:", error)
       try {
-        await message.reply("❌ Error ejecutando comando en subbot.")
+        await message.reply("Error ejecutando comando en subbot.")
       } catch {}
     }
   }
@@ -68,7 +91,7 @@ export default {
   name: "code",
   aliases: ["subbot", "serbot"],
   category: "subbots",
-  description: "Genera código para convertir un número en subbot.",
+  description: "Genera codigo para convertir un numero en subbot.",
 
   async execute({ client, message, args, config, MessageMedia, fs, path, cacheDir }) {
     try {
@@ -76,7 +99,7 @@ export default {
 
       if (message.from.endsWith("@g.us")) {
         return await message.reply(
-          `⚠️ Por seguridad usá este comando en privado.\n\nEjemplo:\n${prefix}code 549112345678`
+          `Por seguridad usa este comando en privado.\n\nEjemplo:\n${prefix}code 549112345678`
         )
       }
 
@@ -86,31 +109,31 @@ export default {
         const phone = cleanPhone(args[1] || "")
 
         if (!phone) {
-          return await message.reply(`⚠️ Usá:\n${prefix}code stop 549112345678`)
+          return await message.reply(`Usa:\n${prefix}code stop 549112345678`)
         }
 
         const sub = subbots.get(phone)
 
         if (!sub) {
-          return await message.reply("❌ No encontré un subbot activo con ese número.")
+          return await message.reply("No encontre un subbot activo con ese numero.")
         }
 
         await sub.destroy()
         subbots.delete(phone)
 
-        return await message.reply("✅ Subbot apagado correctamente.")
+        return await message.reply("Subbot apagado correctamente.")
       }
 
       const phone = cleanPhone(args.join(" "))
 
       if (!phone || phone.length < 8) {
         return await message.reply(
-          `📲 *Convertirse en subbot*\n\nUsá:\n${prefix}code 549112345678\n\nEl número debe ir con código de país y sin +, espacios ni guiones.`
+          `Convertirse en subbot\n\nUsa:\n${prefix}code 549112345678\n\nEl numero debe ir con codigo de pais y sin +, espacios ni guiones.`
         )
       }
 
       if (subbots.has(phone)) {
-        return await message.reply("⚠️ Ese número ya tiene un subbot iniciado.")
+        return await message.reply("Ese numero ya tiene un subbot iniciado.")
       }
 
       const { Client, LocalAuth, MessageMedia: SubbotMessageMedia } = await loadWhatsappWeb()
@@ -158,17 +181,17 @@ export default {
       })
 
       subClient.on("authenticated", async () => {
-        await client.sendMessage(message.from, "✅ Subbot autenticado correctamente.")
+        await client.sendMessage(message.from, "Subbot autenticado correctamente.")
       })
 
       subClient.on("ready", async () => {
-        await client.sendMessage(message.from, "👻 Subbot conectado y listo para usar comandos.")
+        await client.sendMessage(message.from, "Subbot conectado y listo para usar comandos.")
       })
 
       subClient.on("disconnected", async reason => {
         subbots.delete(phone)
         try {
-          await client.sendMessage(message.from, `⚠️ Subbot desconectado: ${reason}`)
+          await client.sendMessage(message.from, `Subbot desconectado: ${reason}`)
         } catch {}
       })
 
@@ -177,37 +200,48 @@ export default {
         try {
           await client.sendMessage(
             message.from,
-            `❌ Falló la autenticación del subbot: ${reason || "sin detalle"}`
+            `Fallo la autenticacion del subbot: ${reason || "sin detalle"}`
           )
         } catch {}
       })
 
       subClient.on("change_state", state => {
-        console.log(`ℹ️ Estado subbot ${phone}: ${state}`)
+        console.log(`Estado subbot ${phone}: ${state}`)
       })
 
-      subClient.initialize()
+      let initializeError = null
+      const initializePromise = Promise.resolve(subClient.initialize()).catch(error => {
+        initializeError = error
+        return null
+      })
 
-      await message.reply("⏳ Iniciando subbot, esperá unos segundos...")
+      await message.reply("Iniciando subbot, espera unos segundos...")
 
       await wait(7000)
 
+      if (initializeError) {
+        await cleanupFailedSubbot(subClient, phone)
+        throw new Error(formatInitError(initializeError, config))
+      }
+
       if (typeof subClient.requestPairingCode !== "function") {
+        await cleanupFailedSubbot(subClient, phone)
         return await message.reply(
-          "❌ Tu versión de whatsapp-web.js no soporta código de emparejamiento.\nActualizá con:\nnpm i whatsapp-web.js@latest"
+          "Tu version de whatsapp-web.js no soporta codigo de emparejamiento.\nActualiza con:\nnpm i whatsapp-web.js@latest"
         )
       }
 
       const pairingCode = await subClient.requestPairingCode(phone)
+      await initializePromise
 
       await message.reply(
-        `🔐 *Código de emparejamiento:*\n\n*${pairingCode}*\n\n📲 En WhatsApp entrá a:\nDispositivos vinculados > Vincular con número de teléfono\n\n⏱️ El código puede vencer rápido.`
+        `Codigo de emparejamiento:\n\n${pairingCode}\n\nEn WhatsApp entra a:\nDispositivos vinculados > Vincular con numero de telefono`
       )
-    } catch (e) {
-      console.error("❌ Error en code.js:", e)
+    } catch (error) {
+      console.error("Error en code.js:", error)
 
       await message.reply(
-        `❌ Error creando subbot.\n\nError: ${e.message}`
+        `Error creando subbot.\n\nError: ${error.message}`
       )
     }
   }
