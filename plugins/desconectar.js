@@ -18,7 +18,11 @@ export default {
         );
       }
 
-      const { phone, ownerChat, sessionDir } = client.subbotMeta;
+      const { phone, clientId, ownerChat, authPath } = client.subbotMeta;
+      const sessionDir = path.join(
+        path.resolve(authPath || config.authPath || "./data/auth"),
+        `session-${clientId}`
+      );
 
       try {
         await message.reply(
@@ -35,11 +39,11 @@ export default {
       } catch {}
 
       try {
-        global.subbotStore?.delete(phone);
+        global.subbots?.delete(phone);
       } catch {}
 
       try {
-        if (sessionDir && fs.existsSync(sessionDir)) {
+        if (fs.existsSync(sessionDir)) {
           fs.rmSync(sessionDir, { recursive: true, force: true });
         }
       } catch {}
