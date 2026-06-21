@@ -21,27 +21,10 @@ import {
   logSuccess,
   logWarn
 } from "./utils/logger.js";
-import { startWebServer } from "./utils/webServer.js";
-import { patchBotState } from "./utils/appState.js";
 
 const CACHE_DIR = path.resolve("./cache");
-const WEB_PORT = Number.isFinite(config.webPort) ? config.webPort : 3000;
-const WEB_HOST = config.webHost || "0.0.0.0";
-let latestBotContext = null;
 
 installPrettyConsole();
-
-try {
-  startWebServer({
-    port: WEB_PORT,
-    host: WEB_HOST,
-    getBotContext: () => latestBotContext,
-    config
-  });
-  logSuccess(`Panel web iniciado en http://localhost:${WEB_PORT}`);
-} catch (error) {
-  logError("Error iniciando la web local.", error);
-}
 
 if (!fs.existsSync(CACHE_DIR)) {
   fs.mkdirSync(CACHE_DIR, { recursive: true });
@@ -82,22 +65,6 @@ setInterval(() => {
 
 async function buildExecutionContext(base) {
   base.client.commands = await loadPlugins();
-  latestBotContext = {
-    client: base.client,
-    MessageMedia: base.MessageMedia,
-    config,
-    fs,
-    path,
-    cacheDir: CACHE_DIR
-  };
-  patchBotState({
-    status: "starting",
-    provider: config.provider,
-    commands: base.client.commands.size,
-    authPath: base.authPath,
-    ownerName: config.ownerName,
-    botName: config.botName
-  });
   return base;
 }
 
@@ -155,15 +122,6 @@ async function handleCommand(message, client, shared) {
 }
 
 function logStartup(shared, commandsSize) {
-  patchBotState({
-    status: "starting",
-    provider: config.provider,
-    commands: commandsSize,
-    authPath: shared.authPath,
-    ownerName: config.ownerName,
-    botName: config.botName
-  });
-
   logBanner([
     `${config.botName} iniciado`,
     `${shared.runtime.platform}/${shared.runtime.arch} | Node ${shared.runtime.node}`,
@@ -198,23 +156,19 @@ async function startLegacyBot() {
   });
 
   client.on("authenticated", () => {
-    patchBotState({ status: "authenticated" });
     logSuccess("Autenticado correctamente.");
   });
 
   client.on("ready", () => {
-    patchBotState({ status: "ready" });
     logSuccess(`${config.botName} esta listo.`);
     logInfo(`Prefijo: ${config.prefix} | Owner: ${config.ownerName} | Provider: ${config.provider}`);
   });
 
   client.on("auth_failure", (msg) => {
-    patchBotState({ status: "auth_failure" });
     logError(`Fallo la autenticacion: ${msg}`);
   });
 
   client.on("disconnected", (reason) => {
-    patchBotState({ status: "disconnected" });
     logWarn(`Bot desconectado: ${reason}`);
   });
 
