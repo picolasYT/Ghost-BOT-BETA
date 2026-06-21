@@ -100,9 +100,9 @@ Si Chromium cambia de ruta en tu instalacion, ajusta `CHROME_PATH`.
 - `!reload`: recarga plugins sin reiniciar el proceso. Solo responde desde la cuenta del owner.
 - `!sug <texto>`: envia una sugerencia o reporte al owner del bot.
 
-## Panel web
+## Web de emparejamiento
 
-Al iniciar el proyecto tambien se levanta un panel web para Render o localhost.
+Al iniciar el proyecto tambien se levanta una pagina web para Render o localhost.
 
 ```text
 http://localhost:3000
@@ -110,7 +110,6 @@ http://localhost:3000
 
 Desde esa pagina ahora podes:
 
-- ver estado del bot y uptime
 - crear subbots desde el navegador
 - obtener el codigo de emparejamiento sin usar el chat
 - apagar subbots activos
