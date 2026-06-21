@@ -1,5 +1,13 @@
 import { startSubbot, stopSubbot } from "../utils/subbotManager.js";
 
+function cleanPhone(text = "") {
+  return text.replace(/\D/g, "");
+}
+
+function getSenderPhone(message) {
+  return cleanPhone(message?.author || message?.from || "");
+}
+
 export default {
   name: "code",
   aliases: ["subbot", "serbot"],
@@ -19,7 +27,7 @@ export default {
       const action = args[0]?.toLowerCase();
 
       if (action === "stop") {
-        const phone = args[1] || "";
+        const phone = args[1] || getSenderPhone(message);
 
         if (!phone) {
           return await message.reply(`⚠️ Usá:\n${prefix}code stop 549112345678`);
@@ -29,11 +37,11 @@ export default {
         return await message.reply("✅ Subbot apagado correctamente.");
       }
 
-      const phone = args.join(" ");
+      const phone = args.join(" ").trim() || getSenderPhone(message);
 
       if (!phone) {
         return await message.reply(
-          `📲 *Convertirse en subbot*\n\nUsá:\n${prefix}code 549112345678\n\nEl número debe ir con código de país y sin +, espacios ni guiones.`
+          `📲 *Convertirse en subbot*\n\nUsá:\n${prefix}code\n\nSi lo mandás en privado, intento detectar tu número automáticamente. También podés usar:\n${prefix}code 549112345678`
         );
       }
 
@@ -51,9 +59,17 @@ export default {
         notifyOwner: true
       });
 
+      if (result.alreadyLinked || result.pairingCode === "YA_VINCULADO") {
+        return await message.reply(
+          "ℹ️ Ese número ya estaba vinculado como subbot. No hace falta generar un código nuevo."
+        );
+      }
+
       await message.reply(
-        `🔐 *Código de emparejamiento:*\n\n*${result.pairingCode}*\n\n📲 En WhatsApp entrá a:\nDispositivos vinculados > Vincular con número de teléfono\n\n⏱️ El código puede vencer rápido.`
+        `📲 Número detectado: *${result.phone}*\n\nEntrá en WhatsApp a:\nDispositivos vinculados > Vincular con número de teléfono`
       );
+
+      await message.reply(result.pairingCode);
     } catch (error) {
       console.error("Error en code.js:", error);
       await message.reply(`❌ Error creando subbot.\n\nError: ${error.message}`);
