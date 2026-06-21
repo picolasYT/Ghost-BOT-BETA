@@ -12,6 +12,22 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function destroyClient(client) {
+  try {
+    await client?.logout?.();
+  } catch {}
+
+  try {
+    await client?.destroy?.();
+  } catch {}
+}
+
+async function closeClient(client) {
+  try {
+    await client?.destroy?.();
+  } catch {}
+}
+
 function removeSessionDir(sessionDir = "") {
   if (!sessionDir) return;
   try {
@@ -34,6 +50,7 @@ function createEntry(phone) {
     error: "",
     ownerChat: "",
     authPath: "",
+    restartPromise: null,
     createdAt: Date.now(),
     updatedAt: Date.now()
   };
@@ -144,7 +161,7 @@ function attachSubbotLifecycle({ sock, entry, mainClient, ownerChat, notifyOwner
         return;
       }
 
-       if (
+      if (
         reasonText === "408" &&
         ["starting", "registered", "pairing_code_ready", "reconnecting"].includes(entry.status)
       ) {
@@ -167,6 +184,23 @@ function attachSubbotLifecycle({ sock, entry, mainClient, ownerChat, notifyOwner
   });
 }
 
+async function requestPairingCode({
+  runtime,
+  entry,
+  normalizedPhone
+}) {
+  await delay(3000);
+
+  const pairingCode = await runtime.sock.requestPairingCode(normalizedPhone);
+  touchEntry(entry, {
+    status: "pairing_code_ready",
+    pairingCode,
+    error: ""
+  });
+
+  return pairingCode;
+}
+
 async function bootSubbotRuntime({
   normalizedPhone,
   mainClient,
@@ -177,7 +211,8 @@ async function bootSubbotRuntime({
   cacheDir,
   entry,
   ownerChat,
-  notifyOwner
+  notifyOwner,
+  onReconnectRuntime
 }) {
   const clientId = `ghost-subbot-${normalizedPhone}`;
   const runtime = await createBaileysSessionRuntime({
@@ -226,6 +261,7 @@ async function bootSubbotRuntime({
     botLabel: `Subbot ${normalizedPhone}`,
     onReconnect: async () => {
       touchEntry(entry, { status: "reconnecting" });
+      await onReconnectRuntime?.();
     }
   });
 
@@ -238,6 +274,57 @@ async function bootSubbotRuntime({
   });
 
   return runtime;
+}
+
+async function restartSubbotRuntime(context) {
+  const { entry } = context;
+
+  if (entry.restartPromise) {
+    return await entry.restartPromise;
+  }
+
+  entry.restartPromise = (async () => {
+    const previousClient = entry.client;
+    await closeClient(previousClient);
+
+    const runtime = await bootSubbotRuntime({
+      ...context,
+      onReconnectRuntime: async () => {
+        await restartSubbotRuntime(context);
+      }
+    });
+
+    if (!runtime.isRegistered) {
+      try {
+        const pairingCode = await requestPairingCode({
+          runtime,
+          entry,
+          normalizedPhone: context.normalizedPhone
+        });
+
+        if (context.notifyOwner) {
+          await notify(
+            context.mainClient,
+            context.ownerChat,
+            `Nuevo codigo de emparejamiento para ${context.normalizedPhone}:\n${pairingCode}`
+          );
+        }
+      } catch (error) {
+        touchEntry(entry, {
+          status: "error",
+          error: String(error?.message || error || "No se pudo regenerar el codigo.")
+        });
+      }
+    }
+
+    return runtime;
+  })();
+
+  try {
+    return await entry.restartPromise;
+  } finally {
+    entry.restartPromise = null;
+  }
 }
 
 export function listSubbots() {
@@ -274,11 +361,7 @@ export async function stopSubbot(phone) {
   touchEntry(entry, { status: "stopping" });
 
   try {
-    await entry.client.logout?.();
-  } catch {}
-
-  try {
-    await entry.client.destroy?.();
+    await destroyClient(entry.client);
   } catch {}
 
   subbotStore.delete(normalized);
@@ -344,7 +427,21 @@ export async function startSubbot({
     cacheDir,
     entry,
     ownerChat,
-    notifyOwner
+    notifyOwner,
+    onReconnectRuntime: async () => {
+      await restartSubbotRuntime({
+        normalizedPhone,
+        mainClient,
+        config,
+        MessageMedia,
+        fs,
+        path,
+        cacheDir,
+        entry,
+        ownerChat,
+        notifyOwner
+      });
+    }
   });
 
   if (runtime.isRegistered) {
@@ -366,7 +463,7 @@ export async function startSubbot({
     }
 
     try {
-      await runtime.client.destroy?.();
+      await closeClient(runtime.client);
     } catch {}
 
     removeSessionDir(runtime.authPath);
@@ -381,18 +478,29 @@ export async function startSubbot({
       cacheDir,
       entry,
       ownerChat,
-      notifyOwner
+      notifyOwner,
+      onReconnectRuntime: async () => {
+        await restartSubbotRuntime({
+          normalizedPhone,
+          mainClient,
+          config,
+          MessageMedia,
+          fs,
+          path,
+          cacheDir,
+          entry,
+          ownerChat,
+          notifyOwner
+        });
+      }
     });
   }
 
-  await delay(2500);
-
   try {
-    const pairingCode = await runtime.sock.requestPairingCode(normalizedPhone);
-    touchEntry(entry, {
-      status: "pairing_code_ready",
-      pairingCode,
-      error: ""
+    const pairingCode = await requestPairingCode({
+      runtime,
+      entry,
+      normalizedPhone
     });
 
     return {
@@ -411,7 +519,7 @@ export async function startSubbot({
     });
 
     try {
-      await runtime.client.destroy?.();
+      await destroyClient(runtime.client);
     } catch {}
 
     throw new Error(message);
