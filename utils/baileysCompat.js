@@ -19,6 +19,7 @@ import { Boom } from "@hapi/boom";
 import config from "../config.js";
 import { logError, logInfo, logStep, logSuccess, logWarn } from "./logger.js";
 import { detectRuntime, resolveAuthPath } from "./runtime.js";
+import { patchBotState } from "./appState.js";
 
 const logger = pino({ level: "silent" });
 const messageStore = global.baileysMessageStore || (global.baileysMessageStore = new Map());
@@ -472,11 +473,17 @@ export async function bindBaileysEvents({
     }
 
     if (connection === "open") {
+      if (patchMainState) {
+        patchBotState({ status: "ready" });
+      }
       logSuccess(`${botLabel} esta listo.`);
       logInfo(`Prefijo: ${config.prefix} | Owner: ${config.ownerName} | Provider: baileys`);
     }
 
     if (connection === "close") {
+      if (patchMainState) {
+        patchBotState({ status: "disconnected" });
+      }
       const statusCode = new Boom(lastDisconnect?.error)?.output?.statusCode;
       logWarn(`${botLabel} desconectado: ${statusCode || "sin codigo"}`);
 

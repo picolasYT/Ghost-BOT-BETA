@@ -46,6 +46,8 @@ PUPPETEER_HEADLESS=true
 DISABLE_SANDBOX=auto
 PROVIDER=baileys
 REPO_URL=https://github.com/picolasYT/Ghost-BOT-BETA.git
+WEB_PORT=3000
+WEB_HOST=0.0.0.0
 ```
 
 ## Plataformas
@@ -89,6 +91,30 @@ Si Chromium cambia de ruta en tu instalacion, ajusta `CHROME_PATH`.
 - `!uptime`: muestra cuanto lleva encendido el bot.
 - `!reload`: recarga plugins sin reiniciar el proceso. Solo responde desde la cuenta del owner.
 - `!sug <texto>`: envia una sugerencia o reporte al owner del bot.
+
+## Web de estado
+
+Al iniciar el proyecto tambien se levanta una pagina web simple con el estado del bot.
+
+```text
+http://localhost:3000
+```
+
+Muestra:
+
+- estado del bot
+- uptime
+- comandos cargados
+- provider
+- owner
+- ruta de auth
+
+Si queres cambiar host o puerto:
+
+```env
+WEB_PORT=3000
+WEB_HOST=0.0.0.0
+```
 
 ## Sugerencias al owner
 
