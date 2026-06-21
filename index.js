@@ -21,10 +21,19 @@ import {
   logSuccess,
   logWarn
 } from "./utils/logger.js";
+import { startWebServer } from "./utils/webServer.js";
 
 const CACHE_DIR = path.resolve("./cache");
+const WEB_PORT = Number.isFinite(config.webPort) ? config.webPort : 3000;
 
 installPrettyConsole();
+
+try {
+  startWebServer(WEB_PORT);
+  logSuccess(`Web local iniciada en http://localhost:${WEB_PORT}`);
+} catch (error) {
+  logError("Error iniciando la web local.", error);
+}
 
 if (!fs.existsSync(CACHE_DIR)) {
   fs.mkdirSync(CACHE_DIR, { recursive: true });

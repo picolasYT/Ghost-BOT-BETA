@@ -46,6 +46,7 @@ CHROME_PATH=
 PUPPETEER_HEADLESS=true
 DISABLE_SANDBOX=auto
 PROVIDER=baileys
+WEB_PORT=3000
 ```
 
 ## Plataformas
@@ -96,6 +97,20 @@ Si Chromium cambia de ruta en tu instalacion, ajusta `CHROME_PATH`.
 - `!uptime`: muestra cuanto lleva encendido el bot.
 - `!reload`: recarga plugins sin reiniciar el proceso. Solo responde desde la cuenta del owner.
 - `!sug <texto>`: envia una sugerencia o reporte al owner del bot.
+
+## Web local
+
+Al iniciar el proyecto tambien se levanta una web local simple en:
+
+```text
+http://localhost:3000
+```
+
+Si queres cambiar el puerto:
+
+```env
+WEB_PORT=3000
+```
 
 ## Sugerencias al owner
 
