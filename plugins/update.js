@@ -10,6 +10,36 @@ function trimOutput(text = "", maxLength = 1200) {
   return `${normalized.slice(0, maxLength)}...`;
 }
 
+async function runGit(args) {
+  return await execFileAsync("git", args, {
+    cwd: process.cwd(),
+    windowsHide: true
+  });
+}
+
+async function detectPullTarget() {
+  try {
+    const { stdout } = await runGit(["branch", "--show-current"]);
+    const branch = stdout.trim();
+
+    if (branch) {
+      return ["pull", "origin", branch];
+    }
+  } catch {}
+
+  try {
+    const { stdout } = await runGit(["symbolic-ref", "refs/remotes/origin/HEAD"]);
+    const remoteHead = stdout.trim();
+    const branch = remoteHead.split("/").pop();
+
+    if (branch) {
+      return ["pull", "origin", branch];
+    }
+  } catch {}
+
+  return ["pull", "origin", "main"];
+}
+
 export default {
   name: "update",
   aliases: ["actualizar", "gitpull"],
@@ -21,15 +51,25 @@ export default {
       return await message.reply("Solo el owner puede actualizar el bot desde su propia cuenta.");
     }
 
-    await message.reply("⏳ Ejecutando git pull...");
+    await message.reply("⏳ Ejecutando actualizacion del bot...");
 
     try {
-      const { stdout, stderr } = await execFileAsync("git", ["pull"], {
-        cwd: process.cwd(),
-        windowsHide: true
-      });
+      let result;
 
-      const output = trimOutput([stdout, stderr].filter(Boolean).join("\n"));
+      try {
+        result = await runGit(["pull"]);
+      } catch (error) {
+        const detail = String(error?.stderr || error?.stdout || error?.message || "").toLowerCase();
+
+        if (!detail.includes("not currently on a branch")) {
+          throw error;
+        }
+
+        const fallbackArgs = await detectPullTarget();
+        result = await runGit(fallbackArgs);
+      }
+
+      const output = trimOutput([result.stdout, result.stderr].filter(Boolean).join("\n"));
 
       await message.reply(
         output
@@ -41,7 +81,7 @@ export default {
       const stderr = trimOutput(error?.stderr || "");
       const detail = trimOutput(stderr || stdout || error?.message || "Sin detalle.");
 
-      await message.reply(`❌ No pude ejecutar git pull.\n\n${detail}`);
+      await message.reply(`❌ No pude actualizar el bot.\n\n${detail}`);
     }
   }
 };
