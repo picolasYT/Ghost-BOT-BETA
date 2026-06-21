@@ -459,29 +459,36 @@ export async function bindBaileysEvents({
   sock,
   client,
   handleCommand,
-  onReconnect
+  onReconnect,
+  showQr = true,
+  patchMainState = true,
+  botLabel = config.botName || "Ghost-Bot"
 }) {
   sock.ev.on("connection.update", async (update) => {
     const { connection, lastDisconnect, qr } = update;
 
-    if (qr && config.loginMethod?.toLowerCase() === "qr") {
+    if (showQr && qr && config.loginMethod?.toLowerCase() === "qr") {
       logStep("Escanea este QR con WhatsApp.");
       qrcode.generate(qr, { small: true });
     }
 
     if (connection === "open") {
-      patchBotState({ status: "ready" });
-      logSuccess(`${config.botName} esta listo.`);
+      if (patchMainState) {
+        patchBotState({ status: "ready" });
+      }
+      logSuccess(`${botLabel} esta listo.`);
       logInfo(`Prefijo: ${config.prefix} | Owner: ${config.ownerName} | Provider: baileys`);
     }
 
     if (connection === "close") {
-      patchBotState({ status: "disconnected" });
+      if (patchMainState) {
+        patchBotState({ status: "disconnected" });
+      }
       const statusCode = new Boom(lastDisconnect?.error)?.output?.statusCode;
-      logWarn(`Bot desconectado: ${statusCode || "sin codigo"}`);
+      logWarn(`${botLabel} desconectado: ${statusCode || "sin codigo"}`);
 
       if (shouldReconnect(lastDisconnect)) {
-        logStep("Reconectando Baileys...");
+        logStep(`Reconectando ${botLabel}...`);
         onReconnect?.();
       }
     }

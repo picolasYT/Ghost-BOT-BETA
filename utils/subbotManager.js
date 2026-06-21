@@ -211,6 +211,9 @@ export async function startSubbot({
     sock,
     client,
     handleCommand,
+    showQr: false,
+    patchMainState: false,
+    botLabel: `Subbot ${normalizedPhone}`,
     onReconnect: async () => {
       touchEntry(entry, { status: "reconnecting" });
     }
@@ -253,7 +256,8 @@ export async function startSubbot({
     return {
       phone: normalizedPhone,
       pairingCode: "YA_VINCULADO",
-      clientId: client.subbotMeta.clientId
+      clientId: client.subbotMeta.clientId,
+      alreadyLinked: true
     };
   }
 
@@ -270,7 +274,8 @@ export async function startSubbot({
     return {
       phone: normalizedPhone,
       pairingCode,
-      clientId: client.subbotMeta.clientId
+      clientId: client.subbotMeta.clientId,
+      alreadyLinked: false
     };
   } catch (error) {
     const message = String(error?.message || "No se pudo generar el codigo.");

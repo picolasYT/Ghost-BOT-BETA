@@ -1,6 +1,6 @@
 import http from "http";
 import { getAppState, patchWebState } from "./appState.js";
-import { listPublicSubbots, startSubbot } from "./subbotManager.js";
+import { startSubbot } from "./subbotManager.js";
 
 function sendJson(res, statusCode, payload) {
   const body = JSON.stringify(payload);
@@ -169,13 +169,6 @@ function renderPage() {
         font-weight: 700;
       }
 
-      .grid {
-        display: grid;
-        grid-template-columns: 1.05fr 0.95fr;
-        gap: 18px;
-        margin-top: 18px;
-      }
-
       .panel-body {
         padding: 22px;
       }
@@ -235,21 +228,7 @@ function renderPage() {
         white-space: pre-wrap;
       }
 
-      .code {
-        display: inline-block;
-        margin-top: 12px;
-        padding: 12px 14px;
-        border-radius: 14px;
-        background: rgba(45, 212, 191, 0.12);
-        border: 1px solid rgba(45, 212, 191, 0.25);
-        color: #b8fff6;
-        font-size: 1.6rem;
-        letter-spacing: 0.15em;
-        font-weight: 800;
-      }
-
       @media (max-width: 980px) {
-        .grid { grid-template-columns: 1fr; }
         .cards { grid-template-columns: repeat(2, 1fr); }
       }
 
@@ -266,29 +245,27 @@ function renderPage() {
     <div class="shell">
       <section class="hero">
         <div class="eyebrow">Ghost Bot • Pairing Web</div>
-        <h1>Emparejá tu subbot desde la web.</h1>
+        <h1>Empareja tu subbot desde la web.</h1>
         <p class="lead">
-          Poné tu número con código de país y generá el código de vinculación sin usar el chat.
-          Si algo falla, esta página te muestra el error real.
+          Pone tu numero con codigo de pais y genera el codigo de vinculacion sin usar el chat.
+          La pagina no lista sesiones ni numeros guardados.
         </p>
         <div class="cards" id="cards"></div>
       </section>
 
-      <section class="grid">
-        <article class="panel" style="grid-column: 1 / -1;">
-          <div class="panel-body stack">
-            <div>
-              <h2>Vincular número</h2>
-              <p class="lead">Ejemplo: <code>549112345678</code>. Sin <code>+</code>, sin espacios y sin guiones.</p>
-            </div>
-            <label>Número de WhatsApp<input id="phone" placeholder="549112345678" autocomplete="off" /></label>
-            <div class="actions">
-              <button class="primary" id="startBtn">Generar código</button>
-              <button class="secondary" id="refreshBtn">Actualizar estado</button>
-            </div>
-            <div class="output" id="output">Esperando acción...</div>
+      <section class="panel" style="margin-top: 18px;">
+        <div class="panel-body stack">
+          <div>
+            <h2>Vincular numero</h2>
+            <p class="lead">Ejemplo: <code>549112345678</code>. Sin <code>+</code>, sin espacios y sin guiones.</p>
           </div>
-        </article>
+          <label>Numero de WhatsApp<input id="phone" placeholder="549112345678" autocomplete="off" /></label>
+          <div class="actions">
+            <button class="primary" id="startBtn">Generar codigo</button>
+            <button class="secondary" id="refreshBtn">Actualizar estado</button>
+          </div>
+          <div class="output" id="output">Esperando accion...</div>
+        </div>
       </section>
     </div>
 
@@ -311,7 +288,7 @@ function renderPage() {
       async function safeJson(res) {
         const text = await res.text();
         if (!text) {
-          return { error: "El servidor devolvió una respuesta vacía." };
+          return { error: "El servidor devolvio una respuesta vacia." };
         }
         try {
           return JSON.parse(text);
@@ -353,12 +330,12 @@ function renderPage() {
       startBtn.addEventListener("click", async () => {
         const phone = phoneEl.value.trim();
         if (!phone) {
-          outputEl.textContent = "Ingresá un número primero.";
+          outputEl.textContent = "Ingresa un numero primero.";
           return;
         }
 
         startBtn.disabled = true;
-        outputEl.textContent = "Generando subbot y esperando código de emparejamiento...";
+        outputEl.textContent = "Generando subbot y esperando codigo de emparejamiento...";
 
         try {
           const json = await api("/api/subbot/start", {
@@ -367,11 +344,17 @@ function renderPage() {
             body: JSON.stringify({ phone })
           });
 
-          outputEl.textContent =
-            "Subbot creado correctamente.\\n\\n" +
-            "Número: " + json.phone + "\\n\\n" +
-            "Código:\\n" +
-            json.pairingCode;
+          if (json.alreadyLinked || json.pairingCode === "YA_VINCULADO") {
+            outputEl.textContent =
+              "Ese numero ya estaba vinculado.\n\n" +
+              "No hace falta generar un codigo nuevo.";
+          } else {
+            outputEl.textContent =
+              "Subbot creado correctamente.\n\n" +
+              "Numero: " + json.phone + "\n\n" +
+              "Codigo:\n" +
+              json.pairingCode;
+          }
 
           phoneEl.value = "";
           await refreshStatus();
@@ -411,8 +394,7 @@ export function startWebServer({ port, host, getBotContext }) {
         const state = getAppState();
         return sendJson(res, 200, {
           ...state,
-          uptime: formatUptime(state.startedAt),
-          subbots: listPublicSubbots()
+          uptime: formatUptime(state.startedAt)
         });
       }
 
@@ -422,7 +404,7 @@ export function startWebServer({ port, host, getBotContext }) {
 
         if (!context?.client) {
           return sendJson(res, 503, {
-            error: "El bot principal todavía no está listo."
+            error: "El bot principal todavia no esta listo."
           });
         }
 
@@ -441,7 +423,8 @@ export function startWebServer({ port, host, getBotContext }) {
         return sendJson(res, 200, {
           ok: true,
           phone: result.phone,
-          pairingCode: result.pairingCode
+          pairingCode: result.pairingCode,
+          alreadyLinked: Boolean(result.alreadyLinked)
         });
       }
 
