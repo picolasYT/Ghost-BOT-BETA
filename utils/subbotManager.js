@@ -1,6 +1,8 @@
 import fs from "fs";
 import { Boom } from "@hapi/boom";
 import { bindBaileysEvents, createBaileysSessionRuntime } from "./baileysCompat.js";
+import { patchSubbotState } from "./appState.js";
+import { logInfo, logWarn } from "./logger.js";
 
 const subbotStore = global.subbotStore || (global.subbotStore = new Map());
 
@@ -51,6 +53,7 @@ function createEntry(phone) {
     ownerChat: "",
     authPath: "",
     shuttingDown: false,
+    lastNotificationError: "",
     restartPromise: null,
     createdAt: Date.now(),
     updatedAt: Date.now()
@@ -60,16 +63,38 @@ function createEntry(phone) {
   return entry;
 }
 
+function publishSubbotState() {
+  patchSubbotState(
+    listSubbots().map(({ pairingCode, ...subbot }) => ({
+      ...subbot,
+      hasPairingCode: Boolean(pairingCode)
+    }))
+  );
+}
+
 function touchEntry(entry, patch = {}) {
   Object.assign(entry, patch, { updatedAt: Date.now() });
+  publishSubbotState();
   return entry;
 }
 
 async function notify(mainClient, ownerChat, text) {
-  if (!mainClient || !ownerChat || !text) return;
-  try {
-    await mainClient.sendMessage(ownerChat, text);
-  } catch {}
+  if (!mainClient || !text) return false;
+
+  const fallbackPhone = cleanPhone(process.env.OWNER_NUMBER || "");
+  const fallbackJid = fallbackPhone ? `${fallbackPhone}@s.whatsapp.net` : "";
+  const targets = [...new Set([ownerChat, fallbackJid].filter(Boolean))];
+
+  for (const target of targets) {
+    try {
+      await mainClient.sendMessage(target, text);
+      return true;
+    } catch (error) {
+      logWarn(`No se pudo notificar a ${target}: ${error?.message || error}`);
+    }
+  }
+
+  return false;
 }
 
 function buildCommandContext({
@@ -155,7 +180,12 @@ function attachSubbotLifecycle({ sock, entry, mainClient, ownerChat, notifyOwner
 
       touchEntry(entry, { status: "ready", error: "" });
       if (notifyOwner) {
-        await notify(mainClient, ownerChat, "Subbot conectado y listo para usar comandos.");
+        const ok = await notify(mainClient, ownerChat, "Subbot conectado y listo para usar comandos.");
+        if (!ok) {
+          touchEntry(entry, {
+            lastNotificationError: "No se pudo enviar aviso de subbot conectado."
+          });
+        }
       }
     }
 
@@ -191,7 +221,12 @@ function attachSubbotLifecycle({ sock, entry, mainClient, ownerChat, notifyOwner
       });
 
       if (notifyOwner) {
-        await notify(mainClient, ownerChat, `Subbot desconectado: ${reasonText}`);
+        const ok = await notify(mainClient, ownerChat, `Subbot desconectado: ${reasonText}`);
+        if (!ok) {
+          touchEntry(entry, {
+            lastNotificationError: `No se pudo enviar aviso de desconexion: ${reasonText}`
+          });
+        }
       }
     }
   });
@@ -202,16 +237,32 @@ async function requestPairingCode({
   entry,
   normalizedPhone
 }) {
-  await delay(3000);
+  const delays = [1500, 2500, 4000, 6500, 9000];
+  let lastError = null;
 
-  const pairingCode = await runtime.sock.requestPairingCode(normalizedPhone);
-  touchEntry(entry, {
-    status: "pairing_code_ready",
-    pairingCode,
-    error: ""
-  });
+  for (const waitMs of delays) {
+    await delay(waitMs);
 
-  return pairingCode;
+    try {
+      const pairingCode = await runtime.sock.requestPairingCode(normalizedPhone);
+      touchEntry(entry, {
+        status: "pairing_code_ready",
+        pairingCode,
+        error: ""
+      });
+
+      logInfo(`Codigo de subbot generado para ${normalizedPhone}`);
+      return pairingCode;
+    } catch (error) {
+      lastError = error;
+      touchEntry(entry, {
+        status: "starting",
+        error: `Esperando socket para codigo: ${error?.message || error}`
+      });
+    }
+  }
+
+  throw lastError || new Error("No se pudo generar el codigo de emparejamiento.");
 }
 
 async function bootSubbotRuntime({
@@ -323,11 +374,16 @@ async function restartSubbotRuntime(context) {
         });
 
         if (context.notifyOwner) {
-          await notify(
+          const ok = await notify(
             context.mainClient,
             context.ownerChat,
             `Nuevo codigo de emparejamiento para ${context.normalizedPhone}:\n${pairingCode}`
           );
+          if (!ok) {
+            touchEntry(entry, {
+              lastNotificationError: "No se pudo enviar el nuevo codigo regenerado."
+            });
+          }
         }
       } catch (error) {
         touchEntry(entry, {
@@ -353,6 +409,8 @@ export function listSubbots() {
     status: entry.status,
     pairingCode: entry.pairingCode,
     error: entry.error,
+    ownerChat: entry.ownerChat,
+    lastNotificationError: entry.lastNotificationError || "",
     createdAt: entry.createdAt,
     updatedAt: entry.updatedAt
   }));
@@ -385,6 +443,7 @@ export async function stopSubbot(phone) {
   } catch {}
 
   subbotStore.delete(normalized);
+  publishSubbotState();
 }
 
 export async function startSubbot({

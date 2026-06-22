@@ -163,6 +163,42 @@ function renderPage() {
         font-weight: 600;
       }
 
+      .subbot-list {
+        display: grid;
+        gap: 12px;
+      }
+
+      .subbot {
+        padding: 16px;
+        border-radius: 18px;
+        background: var(--panel-soft);
+        border: 1px solid rgba(148, 163, 184, 0.12);
+      }
+
+      .subbot-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .pill {
+        padding: 5px 9px;
+        border-radius: 999px;
+        background: rgba(45, 212, 191, 0.12);
+        border: 1px solid rgba(45, 212, 191, 0.18);
+        color: #b8fff6;
+        font-size: 0.78rem;
+        white-space: nowrap;
+      }
+
+      .subbot-detail {
+        margin-top: 10px;
+        color: var(--muted);
+        word-break: break-word;
+        font-size: 0.92rem;
+      }
+
       @media (max-width: 980px) {
         .cards, .details { grid-template-columns: repeat(2, 1fr); }
       }
@@ -188,11 +224,19 @@ function renderPage() {
           <div class="details" id="details"></div>
         </div>
       </section>
+
+      <section class="panel">
+        <div class="panel-body">
+          <div class="kicker">Subbots</div>
+          <div class="subbot-list" id="subbots" style="margin-top: 14px;"></div>
+        </div>
+      </section>
     </div>
 
     <script>
       const cardsEl = document.getElementById("cards");
       const detailsEl = document.getElementById("details");
+      const subbotsEl = document.getElementById("subbots");
 
       function escapeHtml(text) {
         return String(text)
@@ -247,6 +291,21 @@ function renderPage() {
             <div class="detail-value">\${escapeHtml(value)}</div>
           </div>
         \`).join("");
+
+        const subbots = Array.isArray(data.subbots) ? data.subbots : [];
+        subbotsEl.innerHTML = subbots.length
+          ? subbots.map(subbot => \`
+            <div class="subbot">
+              <div class="subbot-head">
+                <strong>\${escapeHtml(subbot.phone || "sin numero")}</strong>
+                <span class="pill">\${escapeHtml(subbot.status || "unknown")}</span>
+              </div>
+              <div class="subbot-detail">Owner chat: \${escapeHtml(subbot.ownerChat || "-")}</div>
+              <div class="subbot-detail">Error: \${escapeHtml(subbot.error || "-")}</div>
+              <div class="subbot-detail">Notificacion: \${escapeHtml(subbot.lastNotificationError || "-")}</div>
+            </div>
+          \`).join("")
+          : '<div class="detail"><div class="detail-value">No hay subbots activos.</div></div>';
       }
 
       refreshStatus().catch(() => {});

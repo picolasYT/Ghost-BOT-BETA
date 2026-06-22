@@ -4,6 +4,16 @@ function cleanPhone(text = "") {
   return text.replace(/\D/g, "");
 }
 
+function phoneFromJid(candidate = "") {
+  const raw = String(candidate || "");
+
+  if (!raw || raw.includes("@lid") || raw.endsWith("@g.us")) {
+    return "";
+  }
+
+  return cleanPhone(raw);
+}
+
 function getSenderPhone(message, config, client) {
   if (message?.fromMe) {
     const ownCandidates = [
@@ -27,7 +37,7 @@ function getSenderPhone(message, config, client) {
   ];
 
   for (const candidate of candidates) {
-    const phone = cleanPhone(candidate || "");
+    const phone = phoneFromJid(candidate);
     if (phone.length >= 8) return phone;
   }
 
