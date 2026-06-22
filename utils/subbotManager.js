@@ -50,6 +50,7 @@ function createEntry(phone) {
     error: "",
     ownerChat: "",
     authPath: "",
+    shuttingDown: false,
     restartPromise: null,
     createdAt: Date.now(),
     updatedAt: Date.now()
@@ -148,6 +149,10 @@ function attachSubbotLifecycle({ sock, entry, mainClient, ownerChat, notifyOwner
     const { connection, lastDisconnect } = update;
 
     if (connection === "open") {
+      if (entry.shuttingDown) {
+        return;
+      }
+
       touchEntry(entry, { status: "ready", error: "" });
       if (notifyOwner) {
         await notify(mainClient, ownerChat, "Subbot conectado y listo para usar comandos.");
@@ -155,6 +160,14 @@ function attachSubbotLifecycle({ sock, entry, mainClient, ownerChat, notifyOwner
     }
 
     if (connection === "close") {
+      if (entry.shuttingDown) {
+        touchEntry(entry, {
+          status: "stopped",
+          error: ""
+        });
+        return;
+      }
+
       const reasonText = normalizeDisconnectReason(lastDisconnect);
 
       if (reasonText === "401" && entry.status === "pairing_code_ready") {
@@ -260,6 +273,9 @@ async function bootSubbotRuntime({
     patchMainState: false,
     botLabel: `Subbot ${normalizedPhone}`,
     onReconnect: async () => {
+      if (entry.shuttingDown) {
+        return;
+      }
       touchEntry(entry, { status: "reconnecting" });
       await onReconnectRuntime?.();
     }
@@ -278,6 +294,10 @@ async function bootSubbotRuntime({
 
 async function restartSubbotRuntime(context) {
   const { entry } = context;
+
+  if (entry.shuttingDown) {
+    return null;
+  }
 
   if (entry.restartPromise) {
     return await entry.restartPromise;
@@ -358,7 +378,7 @@ export async function stopSubbot(phone) {
     throw new Error("No encontre un subbot activo con ese numero.");
   }
 
-  touchEntry(entry, { status: "stopping" });
+  touchEntry(entry, { status: "stopping", shuttingDown: true });
 
   try {
     await destroyClient(entry.client);
@@ -414,7 +434,8 @@ export async function startSubbot({
     status: "starting",
     pairingCode: "",
     error: "",
-    ownerChat
+    ownerChat,
+    shuttingDown: false
   });
 
   let runtime = await bootSubbotRuntime({

@@ -27,6 +27,14 @@ export default {
         );
 
       try {
+        const entry = global.subbotStore?.get(phone);
+        if (entry) {
+          entry.shuttingDown = true;
+          entry.status = "stopping";
+        }
+      } catch {}
+
+      try {
         await message.reply(
           "Desvinculando este subbot. Espera unos segundos..."
         );
