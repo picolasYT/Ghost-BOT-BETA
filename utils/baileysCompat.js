@@ -398,8 +398,6 @@ function shouldReconnect(lastDisconnect) {
 }
 
 export async function createBaileysRuntime() {
-  const runtime = detectRuntime();
-  const authRoot = resolveAuthPath(config.authPath);
   const clientId = "ghost-bot";
   return await createBaileysSessionRuntime({
     clientId,

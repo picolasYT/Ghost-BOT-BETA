@@ -1,10 +1,8 @@
 import "dotenv/config";
 import fs from "fs";
 import path from "path";
-import qrcode from "qrcode-terminal";
 import config from "./config.js";
 import { loadPlugins } from "./utils/loadPlugins.js";
-import { createClient as createLegacyClient } from "./utils/createClient.js";
 import {
   bindBaileysEvents,
   createBaileysRuntime,
@@ -130,7 +128,6 @@ async function handleCommand(message, client, shared) {
       cacheDir: CACHE_DIR,
       runtime: shared.runtime,
       authPath: shared.authPath,
-      disableSandbox: shared.disableSandbox,
       reloadCommands: async () => {
         client.commands = await loadPlugins();
         return client.commands.size;
@@ -169,80 +166,6 @@ function logStartup(shared, commandsSize) {
   }
 }
 
-async function startLegacyBot() {
-  const shared = await buildExecutionContext(createLegacyClient());
-  const { client } = shared;
-
-  logStartup(shared, client.commands.size);
-  logInfo(`Chromium sandbox: ${shared.disableSandbox ? "off" : "on"}`);
-
-  client.on("qr", (qr) => {
-    if (config.loginMethod?.toLowerCase() !== "qr") return;
-    logStep("Escanea este QR con WhatsApp.");
-    qrcode.generate(qr, { small: true });
-  });
-
-  client.on("code", (code) => {
-    logInfo(`Codigo de emparejamiento recibido: ${code}`);
-  });
-
-  client.on("loading_screen", (percent, message) => {
-    logStep(`Cargando... ${percent}% - ${message}`);
-  });
-
-  client.on("authenticated", () => {
-    patchBotState({ status: "authenticated" });
-    logSuccess("Autenticado correctamente.");
-  });
-
-  client.on("ready", () => {
-    patchBotState({ status: "ready" });
-    logSuccess(`${config.botName} esta listo.`);
-    logInfo(`Prefijo: ${config.prefix} | Owner: ${config.ownerName} | Provider: ${config.provider}`);
-  });
-
-  client.on("auth_failure", (msg) => {
-    patchBotState({ status: "auth_failure" });
-    logError(`Fallo la autenticacion: ${msg}`);
-  });
-
-  client.on("disconnected", (reason) => {
-    patchBotState({ status: "disconnected" });
-    logWarn(`Bot desconectado: ${reason}`);
-  });
-
-  client.on("message", async (message) => {
-    if (!message.fromMe) {
-      await handleCommand(message, client, shared);
-    }
-  });
-
-  client.on("message_create", async (message) => {
-    if (message.fromMe) {
-      await handleCommand(message, client, shared);
-    }
-  });
-
-  client.initialize();
-
-  if (config.loginMethod?.toLowerCase() === "code") {
-    const rawPhone = config.phoneNumber || process.env.PHONE_NUMBER || "";
-    const phone = (rawPhone.match(/\d+/g) || []).join("");
-
-    if (!phone) {
-      logWarn("Se selecciono el modo code pero no se proporciono PHONE_NUMBER. Se usara QR.");
-    } else {
-      try {
-        logStep(`Solicitando codigo de emparejamiento para ${phone}...`);
-        const pairingCode = await client.requestPairingCode(phone);
-        logInfo(`Codigo de emparejamiento: ${pairingCode}`);
-      } catch (err) {
-        logError("Error generando codigo de emparejamiento.", err);
-      }
-    }
-  }
-}
-
 let isRestartingBaileys = false;
 
 async function startBaileysBot() {
@@ -277,11 +200,6 @@ async function startBaileysBot() {
 
 async function startBot() {
   try {
-    if ((config.provider || "").toLowerCase() === "whatsapp-web.js") {
-      await startLegacyBot();
-      return;
-    }
-
     await startBaileysBot();
   } catch (error) {
     logError("Error iniciando el bot.", error);
