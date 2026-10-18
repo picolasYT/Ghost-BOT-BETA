@@ -41,15 +41,35 @@ function toSerializedJid(jid = "") {
 function getTextFromMessageContent(content) {
   if (!content) return "";
 
+  // Al pulsar un boton o una fila, WhatsApp puede enviar el ID de la opcion
+  // en vez del texto visible. El ID contiene el comando que debe ejecutar el bot.
+  const nativeFlow = content.interactiveResponseMessage?.nativeFlowResponseMessage;
+  let nativeFlowParams = {};
+  if (nativeFlow?.paramsJson) {
+    try {
+      nativeFlowParams = JSON.parse(nativeFlow.paramsJson);
+    } catch {
+      // Algunas versiones de cliente usan un formato distinto.
+    }
+  }
+
   return (
     content.conversation ||
     content.extendedTextMessage?.text ||
     content.imageMessage?.caption ||
     content.videoMessage?.caption ||
     content.documentMessage?.caption ||
+    content.buttonsResponseMessage?.selectedButtonId ||
     content.buttonsResponseMessage?.selectedDisplayText ||
+    content.listResponseMessage?.singleSelectReply?.selectedRowId ||
+    content.listResponseMessage?.selectedRowId ||
     content.listResponseMessage?.title ||
+    content.templateButtonReplyMessage?.selectedId ||
     content.templateButtonReplyMessage?.selectedDisplayText ||
+    nativeFlowParams.id ||
+    nativeFlowParams.selectedId ||
+    nativeFlowParams.row_id ||
+    nativeFlowParams.button_id ||
     content.interactiveResponseMessage?.body?.text ||
     ""
   );
