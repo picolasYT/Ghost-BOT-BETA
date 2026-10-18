@@ -184,6 +184,11 @@ export default {
         categories
       });
 
+      if (message.fromMe) {
+        await message.reply(text);
+        return;
+      }
+
       try {
         const media = await MessageMedia.fromUrl(menuImage, {
           unsafeMime: true
