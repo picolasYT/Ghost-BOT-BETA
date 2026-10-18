@@ -38,6 +38,19 @@ function toSerializedJid(jid = "") {
   return `${jid}@s.whatsapp.net`;
 }
 
+function getMessageDestination(sock, rawMessage) {
+  const remoteJid = rawMessage.key.remoteJid;
+  if (!rawMessage.key.fromMe || !remoteJid.endsWith("@lid") || isJidGroup(remoteJid)) {
+    return remoteJid;
+  }
+
+  // In self-chat, WhatsApp may address the outgoing message using the bot's LID.
+  // Prefer the account's own JID for replies, which is routable across clients.
+  if (sock.user?.lid) return sock.user.lid;
+  const own = jidDecode(sock.user?.id || "");
+  return own?.user && own?.server ? `${own.user}@${own.server}` : remoteJid;
+}
+
 function getTextFromMessageContent(content) {
   if (!content) return "";
 
@@ -323,7 +336,7 @@ function buildMessageAdapter(sock, rawMessage) {
       _serialized: rawMessage.key.id
     },
     body: getTextFromMessageContent(normalized),
-    from: rawMessage.key.remoteJid,
+    from: getMessageDestination(sock, rawMessage),
     fromMe: Boolean(rawMessage.key.fromMe),
     author: rawMessage.key.participant || rawMessage.key.remoteJid,
     mentionedIds: getMentionedIds(rawMessage),
@@ -332,7 +345,9 @@ function buildMessageAdapter(sock, rawMessage) {
     type: mediaInfo?.type || getContentType(normalized) || "conversation",
     _data: buildDataShape(rawMessage, normalized, mediaInfo),
     async reply(content, _unused, options = {}) {
-      return await sendCompatMessage(sock, rawMessage.key.remoteJid, content, options, rawMessage);
+      const destination = getMessageDestination(sock, rawMessage);
+      const quoted = destination === rawMessage.key.remoteJid ? rawMessage : undefined;
+      return await sendCompatMessage(sock, destination, content, options, quoted);
     },
     async getQuotedMessage() {
       const quotedRaw = resolveQuotedMessage(rawMessage);
