@@ -143,9 +143,9 @@ export default {
   category: "main",
   description: "Muestra el menu principal y categorias del bot.",
 
-  async execute({ client, message, args, config, MessageMedia }) {
+  async execute({ client, message, args, config, MessageMedia, commandPrefix }) {
     try {
-      const prefix = config.prefix || "!";
+      const prefix = commandPrefix || config.prefix || "!";
       const botName = config.botName || "Ghost-Bot";
       const ownerName = config.ownerName || "Owner";
       const sender = getSenderName(message);
