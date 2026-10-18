@@ -98,13 +98,13 @@ async function handleCommand(message, client, shared) {
       `Mensaje | from=${formatId(message.from)} | fromMe=${message.fromMe} | body=${message.body}`
     );
 
-    const commandPrefixes = [...new Set([config.prefix || "!", "."])].sort((a, b) => b.length - a.length);
+    const commandPrefixes = [...new Set([config.prefix || "!", "!", "."])].sort((a, b) => b.length - a.length);
     const commandPrefix = commandPrefixes.find((prefix) => message.body.startsWith(prefix));
     if (!commandPrefix) return;
 
     const commandText = message.body.slice(commandPrefix.length).trim();
     if (!commandText) return;
-    const args = commandText.split(/\s+/);
+    const args = commandText.split(/\\s+/);
 
     const commandName = args.shift()?.toLowerCase();
     if (!commandName) return;
