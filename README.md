@@ -37,7 +37,7 @@ npm start
 `Baileys` queda fijo por codigo, asi que no hace falta configurar `PROVIDER`.
 
 ```env
-PREFIX=!
+BOT_PREFIX=!
 BOT_NAME=Ghost-Bot
 OWNER_NAME=Picolas
 OWNER_NUMBER=
@@ -48,6 +48,8 @@ REPO_URL=https://github.com/picolasYT/Ghost-BOT-BETA.git
 WEB_PORT=3000
 WEB_HOST=0.0.0.0
 ```
+
+En Termux usa `BOT_PREFIX=!`: Termux reserva `PREFIX` para la ruta de instalación. También se aceptan los comandos con `.`.
 
 ## Plataformas
 
@@ -121,7 +123,7 @@ Usa el numero con codigo de pais y sin `+`, espacios ni guiones.
 ## Menú interactivo y prefijos
 
 - `!menu2` abre el menú interactivo con botones nativos de WhatsApp.
-- También podés usar `.menu2` y ejecutar los comandos con `.`, aunque `PREFIX` tenga otro valor.
+- También podés usar `.menu2` y ejecutar los comandos con `.`, aunque `BOT_PREFIX` tenga otro valor.
 - Si el cliente no admite el formato interactivo, el menú responde con una lista de texto.
 
 ## Dashboard web y health checks
