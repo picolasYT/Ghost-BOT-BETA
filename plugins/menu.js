@@ -139,7 +139,7 @@ function renderMainMenu({ prefix, botName, ownerName, sender, totalCommands, cat
 
 export default {
   name: "menu",
-  aliases: ["menu2", "help", "ayuda", "comandos", "allmenu"],
+  aliases: ["help", "ayuda", "comandos", "allmenu"],
   category: "main",
   description: "Muestra el menu principal y categorias del bot.",
 
