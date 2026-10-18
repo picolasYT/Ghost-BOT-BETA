@@ -104,7 +104,7 @@ async function handleCommand(message, client, shared) {
 
     const commandText = message.body.slice(commandPrefix.length).trim();
     if (!commandText) return;
-    const args = commandText.split(/\\s+/);
+    const args = commandText.split(/\s+/);
 
     const commandName = args.shift()?.toLowerCase();
     if (!commandName) return;
