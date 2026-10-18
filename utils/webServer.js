@@ -25,6 +25,17 @@ function formatUptime(startedAt) {
   return `${h}h ${m}m ${s}s`;
 }
 
+function buildHealth(state) {
+  const memory = process.memoryUsage();
+  const limit = Number(process.env.HEALTH_MEMORY_LIMIT_MB || 512) * 1024 * 1024;
+  const ready = state.bot.status === "ready";
+  return { ok: ready, status: ready ? "healthy" : "degraded", checkedAt: new Date().toISOString(), checks: [
+    { id: "process", label: "Proceso Node.js", status: "ok", detail: "El servidor web responde." },
+    { id: "whatsapp", label: "Conexión WhatsApp", status: ready ? "ok" : "warning", detail: state.bot.status || "starting" },
+    { id: "memory", label: "Memoria", status: memory.rss < limit ? "ok" : "warning", detail: "RSS " + Math.round(memory.rss / 1048576) + " MB · Heap " + Math.round(memory.heapUsed / 1048576) + " / " + Math.round(memory.heapTotal / 1048576) + " MB" }
+  ] };
+}
+
 function renderPage() {
   return `<!doctype html>
 <html lang="es">
@@ -199,6 +210,15 @@ function renderPage() {
         font-size: 0.92rem;
       }
 
+      .health-heading { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:16px; }
+      .health-heading h2 { margin:6px 0 0; font-size:1.35rem; }
+      .health-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+      .health-check { padding:15px; border-radius:16px; background:var(--panel-soft); border:1px solid var(--line); }
+      .health-check strong { display:block; margin-bottom:8px; }
+      .health-check small { color:var(--muted); }
+      .health-pill { display:inline-block; padding:7px 11px; border-radius:999px; font-size:.82rem; text-transform:uppercase; }
+      .health-ok { color:#bbf7d0; background:rgba(34,197,94,.15); border:1px solid rgba(34,197,94,.3); }
+      .health-warning { color:#fde68a; background:rgba(245,158,11,.15); border:1px solid rgba(245,158,11,.3); }
       @media (max-width: 980px) {
         .cards, .details { grid-template-columns: repeat(2, 1fr); }
       }
@@ -206,7 +226,8 @@ function renderPage() {
       @media (max-width: 640px) {
         .shell { width: min(100vw - 16px, 1080px); margin: 8px auto 18px; }
         .hero, .panel-body { padding: 18px; }
-        .cards, .details { grid-template-columns: 1fr; }
+        .cards, .details, .health-grid { grid-template-columns: 1fr; }
+        .health-heading { align-items:flex-start; flex-direction:column; }
       }
     </style>
   </head>
@@ -225,6 +246,12 @@ function renderPage() {
         </div>
       </section>
 
+      <section class="panel"><div class="panel-body">
+        <div class="health-heading"><div><div class="kicker">Health checks</div><h2>Salud del servicio</h2></div>
+          <span id="health-status" class="health-pill">Comprobando…</span></div>
+        <div class="health-grid" id="health-checks"></div>
+      </div></section>
+
       <section class="panel">
         <div class="panel-body">
           <div class="kicker">Subbots</div>
@@ -237,6 +264,8 @@ function renderPage() {
       const cardsEl = document.getElementById("cards");
       const detailsEl = document.getElementById("details");
       const subbotsEl = document.getElementById("subbots");
+      const healthEl = document.getElementById("health-checks");
+      const healthStatusEl = document.getElementById("health-status");
 
       function escapeHtml(text) {
         return String(text)
@@ -292,6 +321,14 @@ function renderPage() {
           </div>
         \`).join("");
 
+        const health = data.health || {};
+        healthStatusEl.textContent = health.status || "unknown";
+        healthStatusEl.className = "health-pill " + (health.ok ? "health-ok" : "health-warning");
+        healthEl.innerHTML = (health.checks || []).map((check) =>
+          '<div class="health-check"><strong>' + escapeHtml(check.label) + '</strong>' +
+          '<span class="health-pill health-' + escapeHtml(check.status) + '">' + escapeHtml(check.status) + '</span>' +
+          '<div style="margin-top:8px"><small>' + escapeHtml(check.detail) + '</small></div></div>'
+        ).join("");
         const subbots = Array.isArray(data.subbots) ? data.subbots : [];
         subbotsEl.innerHTML = subbots.length
           ? subbots.map(subbot => \`
@@ -326,15 +363,21 @@ export function startWebServer({ port, host }) {
     }
 
     if (req.method === "GET" && url.pathname === "/health") {
-      return sendJson(res, 200, { ok: true });
+      return sendJson(res, 200, { ok: true, status: "alive", uptime: formatUptime(getAppState().startedAt) });
+    }
+
+    if (req.method === "GET" && url.pathname === "/health/ready") {
+      const health = buildHealth(getAppState());
+      return sendJson(res, health.ok ? 200 : 503, health);
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/health") {
+      return sendJson(res, 200, buildHealth(getAppState()));
     }
 
     if (req.method === "GET" && url.pathname === "/api/status") {
       const state = getAppState();
-      return sendJson(res, 200, {
-        ...state,
-        uptime: formatUptime(state.startedAt)
-      });
+      return sendJson(res, 200, { ...state, uptime: formatUptime(state.startedAt), health: buildHealth(state) });
     }
 
     return sendJson(res, 404, { error: "Ruta no encontrada." });
