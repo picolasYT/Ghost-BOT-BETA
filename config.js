@@ -1,5 +1,7 @@
 export default {
-  prefix: process.env.PREFIX || "!",
+  // Termux reserves PREFIX for its install path; use BOT_PREFIX for bot commands.
+  prefix: process.env.BOT_PREFIX ||
+    (process.env.PREFIX && !/[\\/]/.test(process.env.PREFIX) ? process.env.PREFIX : "!"),
   botName: process.env.BOT_NAME || "Ghost-Bot",
   ownerName: process.env.OWNER_NAME || "Picolas",
   ownerNumber: process.env.OWNER_NUMBER || process.env.PHONE_NUMBER || "",
