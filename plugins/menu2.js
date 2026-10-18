@@ -160,6 +160,14 @@ export default {
         : page >= entries.length - 3
           ? entries.slice(-2)
           : [entries[page + 1]];
+
+    // Replies to commands sent by the linked account itself are unreliable
+    // as native-flow messages; keep the menu usable as plain text.
+    if (message.fromMe) {
+      await message.reply(fallbackText(title, intro, visibleEntries, prefix, backCommand));
+      return;
+    }
+
     try {
       await sendNativeMenu(
         sock,
