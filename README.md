@@ -116,3 +116,18 @@ OWNER_NUMBER=54911XXXXXXXX
 ```
 
 Usa el numero con codigo de pais y sin `+`, espacios ni guiones.
+
+
+## Menú interactivo y prefijos
+
+- `!menu2` abre el menú interactivo con botones nativos de WhatsApp.
+- También podés usar `.menu2` y ejecutar los comandos con `.`, aunque `PREFIX` tenga otro valor.
+- Si el cliente no admite el formato interactivo, el menú responde con una lista de texto.
+
+## Dashboard web y health checks
+
+El dashboard web está disponible en `http://localhost:3000` (o el puerto configurado) e incluye el estado del bot, subbots y comprobaciones de proceso, WhatsApp y memoria.
+
+- `GET /health`: liveness del servidor web.
+- `GET /health/ready`: readiness de WhatsApp; responde HTTP 503 hasta que se conecta.
+- `GET /api/health`: estado detallado de las comprobaciones.
