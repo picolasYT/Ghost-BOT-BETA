@@ -66,23 +66,30 @@ function pagedOptions(entries, page, itemId, pageId) {
 async function sendNativeMenu(sock, jid, title, body, footer, options) {
   const buttons = options.map((option) => quickReply(option.label, option.id));
   const interactiveMessage = proto.Message.InteractiveMessage.create({
-    header: proto.Message.InteractiveMessage.Header.create({ title, subtitle: "Menú de comandos" }),
+    header: proto.Message.InteractiveMessage.Header.create({
+      title,
+      subtitle: "Menú de comandos",
+      hasMediaAttachment: false
+    }),
     body: proto.Message.InteractiveMessage.Body.create({ text: body }),
     footer: proto.Message.InteractiveMessage.Footer.create({ text: footer }),
     nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({
       buttons,
-      messageVersion: 0
+      messageParamsJson: "{}",
+      messageVersion: 1
     })
   });
-  const content = proto.Message.create({
-    messageContextInfo: proto.MessageContextInfo.create({
-      deviceListMetadata: { senderTimestamp: String(Math.floor(Date.now() / 1000)) },
-      deviceListMetadataVersion: 2
-    }),
-    viewOnceMessage: proto.Message.FutureProofMessage.create({
-      message: proto.Message.create({ interactiveMessage })
-    })
-  });
+  const content = {
+    viewOnceMessage: {
+      message: {
+        messageContextInfo: {
+          deviceListMetadata: {},
+          deviceListMetadataVersion: 2
+        },
+        interactiveMessage
+      }
+    }
+  };
   const generated = generateWAMessageFromContent(jid, content, { userJid: sock.user && sock.user.id });
   await sock.relayMessage(jid, generated.message, { messageId: generated.key.id });
 }
@@ -160,13 +167,6 @@ export default {
         : page >= entries.length - 3
           ? entries.slice(-2)
           : [entries[page + 1]];
-
-    // Replies to commands sent by the linked account itself are unreliable
-    // as native-flow messages; keep the menu usable as plain text.
-    if (message.fromMe) {
-      await message.reply(fallbackText(title, intro, visibleEntries, prefix, backCommand));
-      return;
-    }
 
     try {
       await sendNativeMenu(
