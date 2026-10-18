@@ -19,6 +19,7 @@ Eso significa:
 - Carpeta de sesion configurable.
 - Comandos nuevos: `estado`, `uptime`, `reload`.
 - Recarga real de plugins sin reiniciar.
+- Se reconocen los IDs de botones y filas de WhatsApp para ejecutar el comando seleccionado.
 
 ## Requisitos
 
