@@ -46,9 +46,11 @@ function getMessageDestination(sock, rawMessage) {
 
   // In self-chat, WhatsApp may address the outgoing message using the bot's LID.
   // Prefer the account's own JID for replies, which is routable across clients.
-  if (sock.user?.lid) return sock.user.lid;
   const own = jidDecode(sock.user?.id || "");
-  return own?.user && own?.server ? `${own.user}@${own.server}` : remoteJid;
+  if (own?.user && own?.server && own.server !== "lid") {
+    return `${own.user}@${own.server}`;
+  }
+  return sock.user?.lid || remoteJid;
 }
 
 function getTextFromMessageContent(content) {
