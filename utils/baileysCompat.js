@@ -348,7 +348,10 @@ function buildMessageAdapter(sock, rawMessage) {
     _data: buildDataShape(rawMessage, normalized, mediaInfo),
     async reply(content, _unused, options = {}) {
       const destination = getMessageDestination(sock, rawMessage);
-      const quoted = destination === rawMessage.key.remoteJid ? rawMessage : undefined;
+      const quoted =
+        !rawMessage.key.fromMe && destination === rawMessage.key.remoteJid
+          ? rawMessage
+          : undefined;
       return await sendCompatMessage(sock, destination, content, options, quoted);
     },
     async getQuotedMessage() {
