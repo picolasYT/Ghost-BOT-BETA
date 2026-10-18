@@ -68,6 +68,8 @@ function getTextFromMessageContent(content) {
     content.templateButtonReplyMessage?.selectedDisplayText ||
     nativeFlowParams.id ||
     nativeFlowParams.selectedId ||
+    nativeFlowParams.selectedRowId ||
+    nativeFlowParams.selected_row_id ||
     nativeFlowParams.row_id ||
     nativeFlowParams.button_id ||
     content.interactiveResponseMessage?.body?.text ||
