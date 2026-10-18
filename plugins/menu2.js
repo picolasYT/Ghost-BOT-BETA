@@ -29,7 +29,7 @@ function getCategories(client) {
 }
 
 function normalize(value) {
-  return String(value || "").toLowerCase().normalize("NFD").replace(/[\\u0300-\\u036f]/g, "");
+  return String(value || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
 
 function truncate(value, max) {
@@ -89,8 +89,8 @@ async function sendNativeMenu(sock, jid, title, body, footer, options) {
 
 function fallbackText(title, intro, entries, prefix, backCommand) {
   const lines = entries.map((entry) => "• " + entry.label + (entry.description ? " — " + entry.description : ""));
-  return "*" + title + "*\\n" + intro + "\\n\\n" + lines.join("\\n") +
-    "\\n\\nPara volver: " + prefix + backCommand;
+  return "*" + title + "*\n" + intro + "\n\n" + lines.join("\n") +
+    "\n\nPara volver: " + prefix + backCommand;
 }
 
 export default {
